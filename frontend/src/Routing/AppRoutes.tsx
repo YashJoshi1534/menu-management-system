@@ -1,5 +1,6 @@
-import { Routes, Route } from "react-router-dom";
-import ContactForm from "../Pages/ContactForm";
+import { Routes, Route, Navigate } from "react-router-dom";
+import Login from "../Pages/Login";
+import VerifyOTP from "../Pages/VerifyOTP";
 import StoreSetup from "../Pages/StoreSetup";
 import Dashboard from "../Pages/Dashboard";
 import MenuUpload from "../Pages/MenuUpload";
@@ -7,36 +8,40 @@ import DishGeneration from "../Pages/DishGeneration";
 import Completion from "../Pages/Completion";
 import PublicMenu from "../Pages/PublicMenu";
 import ManageMenu from "../Pages/ManageMenu";
+import Navbar from "../components/Navbar";
+import { useAuth } from "../context/AuthContext";
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    const { isAuthenticated } = useAuth();
+    if (!isAuthenticated) return <Navigate to="/" replace />;
+    return (
+        <>
+            <Navbar />
+            {children}
+        </>
+    );
+};
 
 export default function AppRoutes() {
     return (
         <Routes>
-            {/* Step 1: Contact Form */}
-            <Route path="/" element={<ContactForm />} />
+            {/* Public Auth Flow */}
+            <Route path="/" element={<Login />} />
+            <Route path="/verify-otp" element={<VerifyOTP />} />
 
-            {/* Step 2: Store Setup */}
-            <Route path="/store-setup" element={<StoreSetup />} />
+            {/* Protected Routes */}
+            <Route path="/store-setup" element={<ProtectedRoute><StoreSetup /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/menu-upload" element={<ProtectedRoute><MenuUpload /></ProtectedRoute>} />
+            <Route path="/dish-generation" element={<ProtectedRoute><DishGeneration /></ProtectedRoute>} />
+            <Route path="/completion" element={<ProtectedRoute><Completion /></ProtectedRoute>} />
+            <Route path="/manage-menu/:storeUid" element={<ProtectedRoute><ManageMenu /></ProtectedRoute>} />
 
-            {/* Step 3: Dashboard */}
-            <Route path="/dashboard" element={<Dashboard />} />
-
-            {/* Step 4: Menu Upload */}
-            <Route path="/menu-upload" element={<MenuUpload />} />
-
-            {/* Step 5: Dish Generation */}
-            <Route path="/dish-generation" element={<DishGeneration />} />
-
-            {/* Step 6: Completion */}
-            <Route path="/completion" element={<Completion />} />
-
-            {/* Public Menu */}
+            {/* Public Menu (No Navbar needed as it's for customers) */}
             <Route path="/:storeUid/:storeName" element={<PublicMenu />} />
 
-            {/* Manage Menu */}
-            <Route path="/manage-menu/:storeUid" element={<ManageMenu />} />
-
             {/* Fallback */}
-            <Route path="*" element={<div>404 Not Found</div>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
 }

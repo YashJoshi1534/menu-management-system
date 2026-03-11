@@ -2,26 +2,29 @@ import "./App.css";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import AppRoutes from "./Routing/AppRoutes";
+import { AuthProvider } from "./context/AuthContext";
 
 function App() {
   return (
-    <BrowserRouter>
-      {/* Toasts */}
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            borderRadius: "10px",
-            background: "#333",
-            color: "#fff",
-          },
-        }}
-      />
+    <AuthProvider>
+      <BrowserRouter>
+        {/* Toasts */}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              borderRadius: "10px",
+              background: "#333",
+              color: "#fff",
+            },
+          }}
+        />
 
-      {/* App Routes */}
-      <AppRoutes />
-    </BrowserRouter>
+        {/* App Routes */}
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Form, UploadFile, File, HTTPException, status
-from app.database import contacts_collection, store_profiles_collection
+from app.database import businesses_collection, store_profiles_collection
 from app.services.cloudinary_service import upload_image
 from app.models import StoreDB
 import uuid
@@ -8,26 +8,21 @@ import shutil
 
 router = APIRouter(tags=["Stores"])
 
-@router.post("/contacts/{contact_id}/stores", response_model=dict)
+@router.post("/businesses/{business_id}/stores", response_model=dict)
 async def create_store(
-    contact_id: str,
+    business_id: str,
     storeName: str = Form(...),
     logo: UploadFile = File(...)
 ):
-    # Validate contact
-    contact = await contacts_collection.find_one({"contactId": contact_id})
-    if not contact:
-        raise HTTPException(status_code=404, detail="Contact not found")
+    # Validate business
+    business = await businesses_collection.find_one({"businessId": business_id})
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
 
-    # Validate Logo (Basic check, rigorous check would need PIL)
-    # Ideally checking dimensions here, but for now we skip strict PIL check to keep it simple 
-    # unless specific library usage is requested. SRS says 1024x1024 required.
-    
     store_uid = f"store_{uuid.uuid4().hex[:8]}"
 
     # Upload Logo
     try:
-        # Read file into memory
         content = await logo.read()
         logo_url = upload_image(content, "store_logos", f"{store_uid}_logo")
     except Exception as e:
@@ -35,7 +30,7 @@ async def create_store(
 
     new_store = StoreDB(
         storeUid=store_uid,
-        contactId=contact_id,
+        contactId=business_id, # Keeping contactId field name in DB for compatibility, but storing business_id
         storeName=storeName,
         logoUrl=logo_url
     )
@@ -43,13 +38,21 @@ async def create_store(
     # Save Store
     await store_profiles_collection.insert_one(new_store.dict())
 
-    # Update Contact
-    await contacts_collection.update_one(
-        {"contactId": contact_id},
+    # Update Business
+    await businesses_collection.update_one(
+        {"businessId": business_id},
         {"$push": {"storeUids": store_uid}}
     )
 
     return {"storeUid": store_uid}
+
+@router.get("/businesses/{business_id}/stores")
+async def get_business_stores(business_id: str):
+    cursor = store_profiles_collection.find({"contactId": business_id}, {"_id": 0})
+    stores = []
+    async for store in cursor:
+        stores.append(store)
+    return stores
 
 @router.get("/stores/{store_uid}/menu")
 async def get_store_menu(store_uid: str):

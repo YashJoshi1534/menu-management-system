@@ -81,6 +81,26 @@ class DishDB(BaseModel):
     imageStatus: str = "pending" # "pending", "generating", "ready", "failed"
     imageIndex: int
 
+# --- Business Models ---
+class BusinessBase(BaseModel):
+    name: str
+    email: EmailStr
+
+class BusinessCreate(BusinessBase):
+    pass
+
+class BusinessDB(BusinessBase):
+    businessId: str
+    storeUids: List[str] = []
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+# --- OTP Models ---
+class OTPRecord(BaseModel):
+    email: EmailStr
+    otp: str
+    expiresAt: datetime
+
 class DishPaginationResponse(BaseModel):
     page: int
     totalPages: int

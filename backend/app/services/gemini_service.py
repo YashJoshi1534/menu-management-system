@@ -11,7 +11,7 @@ load_dotenv()
 
 # Initialize Gemini Client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL_NAME = "gemini-1.5-flash"
+MODEL_NAME = "gemini-2.5-flash"
 
 async def generate_image_prompt(dish_name: str):
     """
