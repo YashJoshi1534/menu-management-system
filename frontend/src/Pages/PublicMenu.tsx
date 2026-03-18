@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api/client";
 
@@ -26,7 +26,7 @@ export default function PublicMenu() {
     const [store, setStore] = useState<StoreData | null>(null);
     const [menu, setMenu] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
-    const [theme, setTheme] = useState<"light" | "dark">("light");
+    const [theme] = useState<"light" | "dark">("light");
 
     useEffect(() => {
         if (storeUid) fetchMenu();
@@ -44,9 +44,7 @@ export default function PublicMenu() {
         }
     };
 
-    const toggleTheme = () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
-    };
+
 
     if (loading)
         return (
@@ -90,32 +88,7 @@ export default function PublicMenu() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <a
-                            href="/"
-                            className={`px-4 py-2 rounded-xl border text-sm font-medium transition ${isDark
-                                ? "border-gray-700 hover:bg-gray-800"
-                                : "border-gray-200 hover:bg-gray-100"
-                                }`}
-                        >
-                            New Process
-                        </a>
-                        <button
-                            onClick={() => window.location.href = `/manage-menu/${storeUid}`}
-                            className={`px-4 py-2 rounded-xl border text-sm font-medium transition bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700`}
-                        >
-                            Edit Menu
-                        </button>
-                        <button
-                            onClick={toggleTheme}
-                            className={`px-4 py-2 rounded-xl border text-sm font-medium transition ${isDark
-                                ? "border-gray-700 hover:bg-gray-800"
-                                : "border-gray-200 hover:bg-gray-100"
-                                }`}
-                        >
-                            {isDark ? "Light Mode ☀️" : "Dark Mode 🌙"}
-                        </button>
-                    </div>
+
                 </div>
             </div>
 

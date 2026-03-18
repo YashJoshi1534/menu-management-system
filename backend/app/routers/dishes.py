@@ -41,10 +41,23 @@ async def get_dishes(
     
     dish_obj = dishes[0] if dishes else None
 
+    from app.database import admin_config_collection, store_profiles_collection
+    config = await admin_config_collection.find_one() or {}
+    gen_limit = config.get("imageGenerationLimitPerDish", 1)
+
+    req = await requests_collection.find_one({"requestId": request_id})
+    store_currency = "₹"
+    if req:
+        store = await store_profiles_collection.find_one({"storeUid": req.get("storeUid")})
+        if store:
+            store_currency = store.get("currency", "₹")
+
     return {
         "page": page,
-        "totalPages": math.ceil(total_count / limit),
-        "dish": dish_obj # strictly following SRS single-item return for limit=1 assumption
+        "totalPages": math.ceil(total_count / limit) if limit > 0 else 0,
+        "dish": dish_obj,
+        "generationLimit": gen_limit,
+        "storeCurrency": store_currency
     }
 
 @router.post("/requests/{request_id}/generate-image/{dish_id}")
@@ -52,6 +65,13 @@ async def generate_dish_image_route(request_id: str, dish_id: str):
     dish = await dishes_collection.find_one({"dishId": dish_id, "requestId": request_id})
     if not dish:
         raise HTTPException(status_code=404, detail="Dish not found")
+
+    from app.database import admin_config_collection
+    config = await admin_config_collection.find_one() or {}
+    limit = config.get("imageGenerationLimitPerDish", 1)
+
+    if dish.get("generationCount", 0) >= limit:
+        raise HTTPException(status_code=400, detail="Generation limit reached for this dish")
 
     # Update status to generating
     await dishes_collection.update_one(
@@ -76,7 +96,7 @@ async def generate_dish_image_route(request_id: str, dish_id: str):
             {"$set": {
                 "imageUrl": image_url, 
                 "imageStatus": "ready"
-            }}
+            }, "$inc": {"generationCount": 1}}
         )
         
         # Check if ALL dishes are ready to update Request status?

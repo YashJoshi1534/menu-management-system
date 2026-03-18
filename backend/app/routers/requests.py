@@ -103,3 +103,48 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
     )
 
     return {"currentStep": 2, "totalDishes": len(extracted_dishes)}
+
+@router.get("/stores/{store_uid}/requests/active", response_model=dict)
+async def get_active_request(store_uid: str):
+    req = await requests_collection.find_one(
+        {"storeUid": store_uid, "status": "in_progress"},
+        sort=[("createdAt", -1)]
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="No active request found")
+        
+    return {"requestId": req["requestId"], "currentStep": req["currentStep"]}
+
+@router.post("/requests/{request_id}/publish", response_model=dict)
+async def publish_request(request_id: str):
+    req = await requests_collection.find_one({"requestId": request_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    store_uid = req["storeUid"]
+    
+    # Optional logic: mark old published categories and dishes of this store as False (or delete)
+    # We will delete the previous live menu entirely for a clean slate, to handle edge cases
+    from app.database import categories_collection, dishes_collection
+    
+    # 1. Archive/Delete old published ones (For safety let's just delete them entirely for this store)
+    await categories_collection.delete_many({"storeUid": store_uid, "isPublished": True, "requestId": {"$ne": request_id}})
+    await dishes_collection.delete_many({"storeUid": store_uid, "isPublished": True, "requestId": {"$ne": request_id}})
+    
+    # 2. Publish new ones
+    await categories_collection.update_many(
+        {"requestId": request_id},
+        {"$set": {"isPublished": True}}
+    )
+    await dishes_collection.update_many(
+        {"requestId": request_id},
+        {"$set": {"isPublished": True}}
+    )
+    
+    # 3. Mark request as completed
+    await requests_collection.update_one(
+        {"requestId": request_id},
+        {"$set": {"status": "completed", "currentStep": 4}}
+    )
+    
+    return {"status": "success", "message": "Menu successfully generated and published"}

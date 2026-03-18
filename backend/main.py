@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import contacts, stores, requests, dishes, auth
+from app.routers import contacts, stores, requests, dishes, auth, admin
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,6 +22,7 @@ app.include_router(stores.router)
 app.include_router(requests.router)
 app.include_router(dishes.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 @app.get("/")
 async def root():

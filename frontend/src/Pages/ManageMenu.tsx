@@ -13,6 +13,7 @@ interface Dish {
     description: string | null;
     imageUrl: string | null;
     imageStatus?: string;
+    generationCount?: number;
 }
 
 interface Category {
@@ -22,7 +23,8 @@ interface Category {
 
 interface StoreData {
     storeName: string;
-    logoUrl: string;
+    logoUrl: string | null;
+    currency?: string;
 }
 
 export default function ManageMenu() {
@@ -30,8 +32,10 @@ export default function ManageMenu() {
     const navigate = useNavigate();
     const [store, setStore] = useState<StoreData | null>(null);
     const [menu, setMenu] = useState<Category[]>([]);
+    const [originalMenu, setOriginalMenu] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+    const [generationLimit, setGenerationLimit] = useState(1);
 
     useEffect(() => {
         if (storeUid) fetchMenu();
@@ -42,6 +46,8 @@ export default function ManageMenu() {
             const res = await api.get(`/stores/${storeUid}/menu`);
             setStore(res.data.store);
             setMenu(res.data.menu);
+            setOriginalMenu(JSON.parse(JSON.stringify(res.data.menu)));
+            setGenerationLimit(res.data.generationLimit || 1);
         } catch (error) {
             toast.error("Failed to load menu");
         } finally {
@@ -58,6 +64,19 @@ export default function ManageMenu() {
         setMenu(newMenu);
     };
 
+    const isDishDirty = (currentDish: Dish) => {
+        for (const cat of originalMenu) {
+            const origDish = cat.dishes.find(d => d.dishId === currentDish.dishId);
+            if (origDish) {
+                return origDish.name !== currentDish.name ||
+                       origDish.price !== currentDish.price ||
+                       origDish.weight !== currentDish.weight ||
+                       origDish.description !== currentDish.description;
+            }
+        }
+        return false;
+    };
+
     const saveDish = async (dish: Dish) => {
         try {
             await api.put(`/dishes/${dish.dishId}`, {
@@ -66,6 +85,11 @@ export default function ManageMenu() {
                 weight: dish.weight,
                 description: dish.description
             });
+            const newOrig = originalMenu.map(cat => ({
+                ...cat,
+                dishes: cat.dishes.map(d => d.dishId === dish.dishId ? { ...dish } : d)
+            }));
+            setOriginalMenu(newOrig);
             toast.success("Saved!");
         } catch (e) {
             toast.error("Failed to save");
@@ -84,10 +108,10 @@ export default function ManageMenu() {
             // Update image in state
             const newMenu = menu.map(cat => ({
                 ...cat,
-                dishes: cat.dishes.map(d => d.dishId === dish.dishId ? { ...d, imageUrl: res.data.imageUrl } : d)
+                dishes: cat.dishes.map(d => d.dishId === dish.dishId ? { ...d, imageUrl: res.data.imageUrl, generationCount: (d.generationCount || 0) + 1 } : d)
             }));
             setMenu(newMenu);
-            toast.success("Image Regenerated!");
+            toast.success("Image Generated!");
         } catch (e) {
             toast.error("Generation failed");
         } finally {
@@ -98,7 +122,7 @@ export default function ManageMenu() {
     if (loading) return <div className="min-h-screen flex items-center justify-center">Loading Editor...</div>;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 pb-20 relative overflow-hidden">
+        <div className="h-[calc(100vh-76px)] bg-gradient-to-br from-slate-50 to-indigo-50 pb-20 relative overflow-y-auto scrollbar-hide">
             {/* Background Decorations */}
             <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
                 <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-400/10 blur-3xl"></div>
@@ -106,19 +130,16 @@ export default function ManageMenu() {
             </div>
 
             {/* Header */}
-            <div className="bg-white/80 backdrop-blur-xl shadow-sm sticky top-0 z-30 px-6 py-4 flex items-center justify-between border-b border-white">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="p-3 hover:bg-gray-100/50 rounded-full transition-colors group">
-                        <FiArrowLeft className="text-xl text-gray-500 group-hover:text-gray-900 transition-colors" />
+            <div className="sticky top-0 z-30 px-6 py-4 flex items-center justify-between pointer-events-none border-b border-transparent">
+                <div className="flex items-center gap-4 bg-white/90 backdrop-blur-xl shadow-sm border border-white p-3 pr-6 rounded-full pointer-events-auto">
+                    <button onClick={() => navigate(-1)} className="p-3 hover:bg-gray-100/80 rounded-full transition-colors group bg-gray-50">
+                        <FiArrowLeft className="text-xl text-gray-600 group-hover:text-gray-900 transition-colors" />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Edit Menu</h1>
-                        <p className="text-gray-500 text-sm font-medium">{store?.storeName}</p>
-                    </div>
+                    <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Edit Menu</h1>
                 </div>
                 <button 
                     onClick={() => window.open(`/${storeUid}/menu`, '_blank')} 
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-2xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-2 pointer-events-auto"
                 >
                     View Live Website
                 </button>
@@ -173,14 +194,20 @@ export default function ManageMenu() {
                                                 </div>
                                             )}
                                         </div>
-                                        <button
-                                            onClick={() => regenerateImage(dish)}
-                                            disabled={!!regeneratingId}
-                                            className="w-full py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100 active:scale-95"
-                                        >
-                                            <FiRefreshCw className={regeneratingId === dish.dishId ? "animate-spin" : ""} />
-                                            <span className="tracking-tight">Regenerate AI Image</span>
-                                        </button>
+                                        {(!dish.imageUrl || (dish.generationCount || 0) < generationLimit) ? (
+                                            <button
+                                                onClick={() => regenerateImage(dish)}
+                                                disabled={!!regeneratingId}
+                                                className="w-full py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100 active:scale-95"
+                                            >
+                                                <FiRefreshCw className={regeneratingId === dish.dishId ? "animate-spin" : ""} />
+                                                <span className="tracking-tight">{dish.imageUrl ? "Regenerate AI Image" : "Generate AI Image"}</span>
+                                            </button>
+                                        ) : (
+                                            <div className="w-full py-3 bg-gray-50 text-gray-400 border border-gray-100 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                                                <span className="tracking-tight uppercase text-xs">Limit Reached</span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Edit Details Section */}
@@ -198,7 +225,7 @@ export default function ManageMenu() {
                                             <div className="flex gap-4">
                                                 <div className="flex-1 relative group/input">
                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest absolute -top-2 left-3 bg-white px-2 z-10 transition-colors group-focus-within/input:text-blue-600">Price</label>
-                                                    <span className="absolute left-4 top-4 text-gray-500 font-bold">$</span>
+                                                    <span className="absolute left-4 top-4 text-gray-500 font-bold">{store?.currency || '₹'}</span>
                                                     <input
                                                         className="w-full pl-9 p-4 border border-gray-200 bg-gray-50 focus:bg-white rounded-xl font-bold text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                                         type="number"
@@ -230,13 +257,23 @@ export default function ManageMenu() {
                                         </div>
 
                                         <div className="flex justify-end pt-2">
-                                            <button
-                                                onClick={() => saveDish(dish)}
-                                                className="bg-gray-900 text-white px-8 py-3.5 rounded-xl font-bold shadow-md hover:shadow-xl hover:bg-black transition-all active:scale-95 flex items-center gap-2"
-                                            >
-                                                <FiSave className="text-lg" /> 
-                                                <span className="tracking-tight">Save Changes</span>
-                                            </button>
+                                            {isDishDirty(dish) ? (
+                                                <button
+                                                    onClick={() => saveDish(dish)}
+                                                    className="bg-blue-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:shadow-xl hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
+                                                >
+                                                    <FiSave className="text-lg" /> 
+                                                    <span className="tracking-tight">Save Changes</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    disabled
+                                                    className="bg-gray-100 text-gray-400 px-8 py-3.5 rounded-xl font-bold cursor-not-allowed flex items-center gap-2 transition-all opacity-70"
+                                                >
+                                                    <FiSave className="text-lg" /> 
+                                                    <span className="tracking-tight">Saved</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from bson import ObjectId
 
@@ -47,9 +47,27 @@ class StoreCreate(StoreBase):
 class StoreDB(StoreBase):
     storeUid: str
     contactId: str
-    logoUrl: str
+    address: str
+    city: str
+    zipCode: str
+    phone: Optional[str] = None # Keeping for compatibility if needed, but primary phone is in Business
+    logoUrl: Optional[str] = None
+    storeImages: List[str] = []
+    currency: str = "₹"
+    isActive: bool = True
+    isDeleted: bool = False
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+class StoreUpdate(BaseModel):
+    storeName: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    zipCode: Optional[str] = None
+    phone: Optional[str] = None
+    isActive: Optional[bool] = None
+    currency: Optional[str] = None
+    logoUrl: Optional[str] = None
 
 # --- Request Models ---
 class RequestDB(BaseModel):
@@ -66,6 +84,7 @@ class CategoryDB(BaseModel):
     storeUid: str
     requestId: str
     name: str
+    isPublished: bool = False
 
 # --- Dish Models ---
 class DishDB(BaseModel):
@@ -80,11 +99,15 @@ class DishDB(BaseModel):
     imageUrl: Optional[str] = None
     imageStatus: str = "pending" # "pending", "generating", "ready", "failed"
     imageIndex: int
+    isPublished: bool = False
+    generationCount: int = 0
 
 # --- Business Models ---
 class BusinessBase(BaseModel):
     name: str
     email: EmailStr
+    businessType: Optional[str] = None
+    phone: Optional[str] = None
 
 class BusinessCreate(BusinessBase):
     pass
@@ -95,13 +118,25 @@ class BusinessDB(BusinessBase):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
+# --- Admin Config Models ---
+class AdminConfigDB(BaseModel):
+    maxOtpResends: int = 3
+    otpBlockDurationMinutes: int = 10
+    otpResendWaitSeconds: int = 30
+    imageGenerationLimit: int = 50
+    imageGenerationLimitPerDish: int = 1
+
 # --- OTP Models ---
 class OTPRecord(BaseModel):
     email: EmailStr
     otp: str
     expiresAt: datetime
+    requestCount: int = 1
+    blockedUntil: Optional[datetime] = None
 
 class DishPaginationResponse(BaseModel):
     page: int
     totalPages: int
     dish: Optional[DishDB]
+    generationLimit: int = 1
+    storeCurrency: str = "₹"

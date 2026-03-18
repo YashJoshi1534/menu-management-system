@@ -1,6 +1,6 @@
 import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
-import { FiLogOut, FiHome } from "react-icons/fi";
+import { useNavigate, useLocation } from "react-router-dom";
+import { FiLogOut, FiHome, FiSettings } from "react-icons/fi";
 import { useEffect, useState } from "react";
 import api from "../api/client";
 
@@ -8,8 +8,15 @@ export default function Navbar() {
     const { business, logout, selectedStoreUid, setSelectedStoreUid } = useAuth();
     const [storeInfo, setStoreInfo] = useState<any>(null);
     const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
+        const dashboardRoutes = ["/dashboard", "/store-setup", "/view-stores", "/business-details", "/configure-stores"];
+        if (dashboardRoutes.includes(location.pathname)) {
+            setStoreInfo(null);
+            return;
+        }
+
         const fetchStoreInfo = async () => {
             if (selectedStoreUid) {
                 try {
@@ -23,24 +30,26 @@ export default function Navbar() {
             }
         };
         fetchStoreInfo();
-    }, [selectedStoreUid]);
+    }, [selectedStoreUid, location.pathname, setSelectedStoreUid]);
 
     if (!business) return null;
 
     return (
-        <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100/50 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+        <nav className="w-full bg-white/80 backdrop-blur-md border-b border-gray-100/50 px-4 py-4 flex items-center justify-between sticky top-0 z-50">
             <div className="flex items-center gap-6">
                 <button
                     onClick={() => {
                         setSelectedStoreUid(null);
                         navigate("/dashboard");
                     }}
-                    className="flex items-center gap-2 text-gray-700 hover:text-blue-600 font-bold transition-colors group"
+                    className="flex items-center gap-3 text-gray-900 transition-colors group"
                 >
-                    <div className="bg-blue-50 group-hover:bg-blue-100 p-2 rounded-xl transition-colors">
-                        <FiHome className="text-xl text-blue-600" />
+                    <div className="bg-blue-50 p-2.5 rounded-2xl transition-colors">
+                        <FiHome className="text-2xl text-blue-600" />
                     </div>
-                    <span className="hidden sm:inline tracking-tight">Dashboard</span>
+                    <span className="text-xl font-[1000] tracking-tight whitespace-nowrap transition-colors">
+                        Dashboard <span className="text-gray-300 font-normal mx-1">|</span> {business.name}
+                    </span>
                 </button>
 
                 {storeInfo && (
@@ -58,20 +67,29 @@ export default function Navbar() {
                                     {storeInfo.storeName?.charAt(0)}
                                 </div>
                             )}
-                            <span className="font-semibold text-gray-800 text-sm tracking-tight pr-2">{storeInfo.storeName}</span>
+                            <span className="font-semibold text-gray-800 text-sm tracking-tight pr-2">
+                                {storeInfo.storeName} {storeInfo.city && <span className="text-gray-400 font-normal">/ {storeInfo.city}</span>}
+                            </span>
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-2 sm:gap-5">
                 <div className="text-right hidden sm:block">
-                    <p className="text-sm font-bold text-gray-900 tracking-tight leading-tight">{business.name}</p>
                     <p className="text-xs text-gray-400 font-medium">{business.email}</p>
                 </div>
                 <button
+                    onClick={() => navigate("/configure-stores")}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-xl font-semibold transition-all group"
+                    title="Settings"
+                >
+                    <FiSettings className="group-hover:rotate-45 transition-transform" />
+                    <span className="hidden md:inline">Settings</span>
+                </button>
+                <button
                     onClick={logout}
-                    className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-all group"
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-all group"
                     title="Logout"
                 >
                     <FiLogOut className="group-hover:-translate-x-1 transition-transform" />

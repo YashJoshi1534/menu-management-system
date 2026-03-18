@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState } from "react";
 
 interface Business {
     businessId: string;
@@ -13,40 +13,64 @@ interface AuthContextType {
     logout: () => void;
     selectedStoreUid: string | null;
     setSelectedStoreUid: (uid: string | null) => void;
+    globalLoading: boolean;
+    setGlobalLoading: (loading: boolean) => void;
 }
+
+// Cookie Helpers
+const setCookie = (name: string, value: string, days = 7) => {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+};
+
+const getCookie = (name: string) => {
+    return document.cookie.split("; ").reduce((r, v) => {
+        const parts = v.split("=");
+        return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+    }, "");
+};
+
+const removeCookie = (name: string) => {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [business, setBusiness] = useState<Business | null>(null);
-    const [selectedStoreUid, setSelectedStoreUid] = useState<string | null>(localStorage.getItem("storeUid"));
+    // Synchronous initialization to prevent redirect on refresh
+    const [business, setBusiness] = useState<Business | null>(() => {
+        const saved = getCookie("business");
+        return saved ? JSON.parse(saved) : null;
+    });
 
-    useEffect(() => {
-        const storedBusiness = localStorage.getItem("business");
-        if (storedBusiness) {
-            setBusiness(JSON.parse(storedBusiness));
-        }
-    }, []);
+    const [selectedStoreUid, setSelectedStoreUid] = useState<string | null>(() => {
+        return getCookie("storeUid") || null;
+    });
 
     const login = (biz: Business) => {
         setBusiness(biz);
-        localStorage.setItem("business", JSON.stringify(biz));
-        localStorage.setItem("businessId", biz.businessId);
+        setCookie("business", JSON.stringify(biz));
     };
 
     const logout = () => {
         setBusiness(null);
         setSelectedStoreUid(null);
+        removeCookie("business");
+        removeCookie("storeUid");
+        // Clear all local storage session data
         localStorage.clear();
+        // Redirect to login
         window.location.href = "/";
     };
+
+    const [globalLoading, setGlobalLoading] = useState(false);
 
     const handleSetSelectedStoreUid = (uid: string | null) => {
         setSelectedStoreUid(uid);
         if (uid) {
-            localStorage.setItem("storeUid", uid);
+            setCookie("storeUid", uid);
         } else {
-            localStorage.removeItem("storeUid");
+            removeCookie("storeUid");
         }
     };
 
@@ -57,7 +81,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             login,
             logout,
             selectedStoreUid,
-            setSelectedStoreUid: handleSetSelectedStoreUid
+            setSelectedStoreUid: handleSetSelectedStoreUid,
+            globalLoading,
+            setGlobalLoading
         }}>
             {children}
         </AuthContext.Provider>
