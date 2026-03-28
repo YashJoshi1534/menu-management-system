@@ -11,18 +11,18 @@ export interface Dish {
   imageStatus?: "pending" | "generating" | "ready" | "failed";
 }
 
-export default function StorePage() {
+export default function OutletPage() {
   const [dishes, setDishes] = useState<Dish[]>([]);
-  const { storeUid } = useParams<{ storeUid: string }>();
+  const { outletUid } = useParams<{ outletUid: string }>();
 
   // 🔒 prevents duplicate background runs
   const isGeneratingRef = useRef(false);
 
   const fetchDishes = async () => {
-    if (!storeUid) return;
+    if (!outletUid) return;
 
     const res = await axios.get(
-      `http://127.0.0.1:8000/stores/${storeUid}/dishes`
+      `http://127.0.0.1:8000/outlets/${outletUid}/dishes`
     );
     setDishes(res.data);
   };
@@ -30,7 +30,7 @@ export default function StorePage() {
   // ✅ initial load
   useEffect(() => {
     fetchDishes();
-  }, [storeUid]);
+  }, [outletUid]);
 
   // 🔥 background image generation (SAFE & SEQUENTIAL)
   useEffect(() => {

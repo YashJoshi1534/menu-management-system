@@ -4,8 +4,10 @@ motor
 python-multipart
 httpx
 cloudinary
-google-generativeai
+google-genai
 python-dotenv
 pydantic[email]
 requests
 email-validator
+python-jose[cryptography]
+passlib[bcrypt]

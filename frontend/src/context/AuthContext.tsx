@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useState } from "react";
+import { getCookie, setCookie, removeCookie } from "../utils/cookies";
 
 interface Business {
     businessId: string;
     name: string;
     email: string;
+    accessToken?: string;
+    refreshToken?: string;
 }
 
 interface AuthContextType {
@@ -11,28 +14,9 @@ interface AuthContextType {
     isAuthenticated: boolean;
     login: (business: Business) => void;
     logout: () => void;
-    selectedStoreUid: string | null;
-    setSelectedStoreUid: (uid: string | null) => void;
-    globalLoading: boolean;
-    setGlobalLoading: (loading: boolean) => void;
+    selectedOutletUid: string | null;
+    setSelectedOutletUid: (uid: string | null) => void;
 }
-
-// Cookie Helpers
-const setCookie = (name: string, value: string, days = 7) => {
-    const expires = new Date(Date.now() + days * 864e5).toUTCString();
-    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
-};
-
-const getCookie = (name: string) => {
-    return document.cookie.split("; ").reduce((r, v) => {
-        const parts = v.split("=");
-        return parts[0] === name ? decodeURIComponent(parts[1]) : r;
-    }, "");
-};
-
-const removeCookie = (name: string) => {
-    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -43,34 +27,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return saved ? JSON.parse(saved) : null;
     });
 
-    const [selectedStoreUid, setSelectedStoreUid] = useState<string | null>(() => {
-        return getCookie("storeUid") || null;
+    const [selectedOutletUid, setSelectedOutletUid] = useState<string | null>(() => {
+        return getCookie("outletUid") || null;
     });
 
     const login = (biz: Business) => {
         setBusiness(biz);
         setCookie("business", JSON.stringify(biz));
+        if (biz.accessToken) setCookie("accessToken", biz.accessToken);
+        if (biz.refreshToken) setCookie("refreshToken", biz.refreshToken);
     };
 
     const logout = () => {
         setBusiness(null);
-        setSelectedStoreUid(null);
+        setSelectedOutletUid(null);
         removeCookie("business");
-        removeCookie("storeUid");
+        removeCookie("outletUid");
+        removeCookie("accessToken");
+        removeCookie("refreshToken");
         // Clear all local storage session data
         localStorage.clear();
         // Redirect to login
         window.location.href = "/";
     };
 
-    const [globalLoading, setGlobalLoading] = useState(false);
 
-    const handleSetSelectedStoreUid = (uid: string | null) => {
-        setSelectedStoreUid(uid);
+    const handleSetSelectedOutletUid = (uid: string | null) => {
+        setSelectedOutletUid(uid);
         if (uid) {
-            setCookie("storeUid", uid);
+            setCookie("outletUid", uid);
         } else {
-            removeCookie("storeUid");
+            removeCookie("outletUid");
         }
     };
 
@@ -80,10 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: !!business,
             login,
             logout,
-            selectedStoreUid,
-            setSelectedStoreUid: handleSetSelectedStoreUid,
-            globalLoading,
-            setGlobalLoading
+            selectedOutletUid,
+            setSelectedOutletUid: handleSetSelectedOutletUid,
         }}>
             {children}
         </AuthContext.Provider>

@@ -19,6 +19,7 @@ export default function VerifyOTP() {
     const name = location.state?.name;
     const businessType = location.state?.businessType;
     const phone = location.state?.phone;
+    const logoData = location.state?.logoData;
 
     useEffect(() => {
         if (!email) {
@@ -74,21 +75,24 @@ export default function VerifyOTP() {
                 otp,
                 name,
                 businessType,
-                phone
+                phone,
+                logoData
             });
             login({
                 businessId: res.data.businessId,
                 name: res.data.name,
-                email: res.data.email
+                email: res.data.email,
+                accessToken: res.data.accessToken,
+                refreshToken: res.data.refreshToken
             });
             toast.success("Verified successfully! 🎉");
 
-            // Check if business has stores
-            const storesRes = await api.get(`/businesses/${res.data.businessId}/stores`);
-            if (storesRes.data.length > 0) {
+            // Check if business has outlets
+            const outletsRes = await api.get(`/businesses/${res.data.businessId}/outlets`);
+            if (outletsRes.data.outlets && outletsRes.data.outlets.length > 0) {
                 navigate("/dashboard");
             } else {
-                navigate("/store-setup");
+                navigate("/outlet-setup");
             }
         } catch (error: any) {
             toast.error(error?.response?.data?.detail || "Invalid OTP");
@@ -165,8 +169,8 @@ export default function VerifyOTP() {
                             onClick={handleResend}
                             disabled={resendTimer > 0 || isResending}
                             className={`font-bold transition ${resendTimer > 0 || isResending
-                                    ? "text-gray-400 cursor-not-allowed"
-                                    : "text-blue-600 hover:text-blue-700"
+                                ? "text-gray-400 cursor-not-allowed"
+                                : "text-blue-600 hover:text-blue-700"
                                 }`}
                         >
                             {isResending ? "Resending..." : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}

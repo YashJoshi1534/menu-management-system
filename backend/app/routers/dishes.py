@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from typing import Optional
 from app.database import dishes_collection, requests_collection
 from app.services.stability_service import generate_image_stability
 from app.services.cloudinary_service import upload_image
@@ -19,45 +20,42 @@ async def get_dishes(
 ):
     skip = (page - 1) * limit
     
-    total_count = await dishes_collection.count_documents({"requestId": request_id})
-    cursor = dishes_collection.find({"requestId": request_id}).skip(skip).limit(limit)
+    query = {"requestId": request_id, "isDeleted": {"$ne": True}}
+    total_count = await dishes_collection.count_documents(query)
+    cursor = dishes_collection.find(query).skip(skip).limit(limit)
     
     dishes = await cursor.to_list(length=limit)
     
-    # Using the first dish for the specific requirement of single dish view or just return list logic
-    # The SRS says "Fetch Paginated Dish" singular in title but "dishes" in endpoint usually implies list.
-    # However, output says "dish": {...} singular.
-    # Let's support returning the LIST but adhering to SRS structure might mean they want one by one?
-    # SRS Output: "dish": { ... } logic suggests one item per page if limit=1.
-    # We will return the list but call the field "dishes" in our own logical internal structure,
-    # but to match SRS output EXACTLY if limit=1 we might need to adjust.
-    # Let's stick to standard pagination: returns list of dishes. 
-    # If the user specifically wants strict SRS "dish": {} single object, I can adjust.
-    # Assumption: "dish" in SRS output implies the 'current' dish in a wizard flow. 
-    # I will return 'dishes' as a list to be safe for now.
-    
-    # Wait, SRS says: "GET /requests/{requestId}/dishes?page=1&limit=1" -> output "dish": {...}
-    # It seems designed for a carousel where you fetch 1 at a time.
-    
     dish_obj = dishes[0] if dishes else None
+    
+    # Fetch Category Name
+    category_name = "General"
+    if dish_obj and dish_obj.get("categoryId"):
+        from app.database import categories_collection
+        cat = await categories_collection.find_one({"categoryId": dish_obj["categoryId"]})
+        if cat:
+            category_name = cat.get("name", "General")
 
-    from app.database import admin_config_collection, store_profiles_collection
+    from app.database import admin_config_collection, outlet_profiles_collection
     config = await admin_config_collection.find_one() or {}
     gen_limit = config.get("imageGenerationLimitPerDish", 1)
 
     req = await requests_collection.find_one({"requestId": request_id})
-    store_currency = "₹"
+    outlet_currency = "₹"
     if req:
-        store = await store_profiles_collection.find_one({"storeUid": req.get("storeUid")})
+        store = await outlet_profiles_collection.find_one({"storeUid": req.get("storeUid")})
         if store:
-            store_currency = store.get("currency", "₹")
+            outlet_currency = store.get("currency", "₹")
+
+    if dish_obj:
+        dish_obj["categoryName"] = category_name
 
     return {
         "page": page,
         "totalPages": math.ceil(total_count / limit) if limit > 0 else 0,
         "dish": dish_obj,
         "generationLimit": gen_limit,
-        "storeCurrency": store_currency
+        "outletCurrency": outlet_currency
     }
 
 @router.post("/requests/{request_id}/generate-image/{dish_id}")
@@ -128,6 +126,34 @@ async def update_dish(dish_id: str, update_data: dict):
         update_fields["weight"] = update_data["weight"]
     if "description" in update_data:
         update_fields["description"] = update_data["description"]
+    if "isPublished" in update_data:
+        update_fields["isPublished"] = bool(update_data["isPublished"])
+    
+    if "categoryName" in update_data:
+        # Find or create category for this store
+        dish = await dishes_collection.find_one({"dishId": dish_id})
+        if dish:
+            store_uid = dish.get("storeUid")
+            cat_name = update_data["categoryName"]
+            from app.database import categories_collection
+            import uuid
+            from datetime import datetime
+            
+            cat = await categories_collection.find_one({"storeUid": store_uid, "name": cat_name, "isDeleted": {"$ne": True}})
+            if not cat:
+                cat_id = f"cat_{(uuid.uuid4().hex)[:8]}"
+                await categories_collection.insert_one({
+                    "categoryId": cat_id,
+                    "storeUid": store_uid,
+                    "requestId": dish.get("requestId", "manual"),
+                    "name": cat_name,
+                    "isPublished": True,
+                    "createdAt": datetime.utcnow()
+                })
+            else:
+                cat_id = cat["categoryId"]
+            update_fields["categoryId"] = cat_id
+            update_fields["categoryName"] = cat_name
         
     if not update_fields:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -141,3 +167,64 @@ async def update_dish(dish_id: str, update_data: dict):
         raise HTTPException(status_code=404, detail="Dish not found")
         
     return {"message": "Dish updated successfully", "updatedFields": update_fields}
+
+
+@router.post("/outlets/{outlet_uid}/dishes")
+async def create_manual_dish(outlet_uid: str, dish_data: dict):
+    # dish_data expected: name, price, weight, description, categoryId
+    import uuid
+    from datetime import datetime
+    
+    dish_id = f"dish_{(uuid.uuid4().hex)[:8]}"
+    
+    new_dish = {
+        "dishId": dish_id,
+        "storeUid": outlet_uid,
+        "requestId": "manual",
+        "categoryId": dish_data.get("categoryId"),
+        "name": dish_data.get("name", "New Dish"),
+        "price": float(dish_data.get("price", 0)) if dish_data.get("price") else 0.0,
+        "weight": dish_data.get("weight"),
+        "description": dish_data.get("description"),
+        "imageStatus": "pending",
+        "imageIndex": 0,
+        "isPublished": True,
+        "createdAt": datetime.utcnow()
+    }
+    
+    await dishes_collection.insert_one(new_dish)
+    return new_dish
+
+@router.post("/dishes/{dish_id}/upload-image")
+async def upload_dish_image_manual(dish_id: str, file: UploadFile = File(...)):
+    dish = await dishes_collection.find_one({"dishId": dish_id})
+    if not dish:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    try:
+        content = await file.read()
+        # Upload to Cloudinary
+        image_url = upload_image(content, "manual_dishes", f"{dish_id}_manual")
+        
+        # Update DB
+        await dishes_collection.update_one(
+            {"dishId": dish_id},
+            {"$set": {
+                "imageUrl": image_url, 
+                "imageStatus": "ready"
+            }}
+        )
+        return {"imageUrl": image_url, "imageStatus": "ready"}
+    except Exception as e:
+        logger.error(f"Error in upload_dish_image_manual: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/dishes/{dish_id}")
+async def delete_dish(dish_id: str):
+    result = await dishes_collection.update_one(
+        {"dishId": dish_id},
+        {"$set": {"isDeleted": True}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dish not found")
+    return {"status": "deleted"}

@@ -5,41 +5,41 @@ import { useEffect, useState } from "react";
 import api from "../api/client";
 
 export default function Navbar() {
-    const { business, logout, selectedStoreUid, setSelectedStoreUid } = useAuth();
-    const [storeInfo, setStoreInfo] = useState<any>(null);
+    const { business, logout, selectedOutletUid, setSelectedOutletUid } = useAuth();
+    const [outletInfo, setOutletInfo] = useState<any>(null);
     const navigate = useNavigate();
     const location = useLocation();
 
     useEffect(() => {
-        const dashboardRoutes = ["/dashboard", "/store-setup", "/view-stores", "/business-details", "/configure-stores"];
+        const dashboardRoutes = ["/dashboard", "/outlet-setup", "/view-outlets", "/business-details", "/configure-outlets"];
         if (dashboardRoutes.includes(location.pathname)) {
-            setStoreInfo(null);
+            setOutletInfo(null);
             return;
         }
 
-        const fetchStoreInfo = async () => {
-            if (selectedStoreUid) {
+        const fetchOutletInfo = async () => {
+            if (selectedOutletUid) {
                 try {
-                    const res = await api.get(`/stores/${selectedStoreUid}/menu`);
-                    setStoreInfo(res.data.store);
+                    const res = await api.get(`/outlets/${selectedOutletUid}/menu`);
+                    setOutletInfo(res.data.outlet);
                 } catch (err) {
-                    console.error("Failed to fetch store info", err);
+                    console.error("Failed to fetch outlet info", err);
                 }
             } else {
-                setStoreInfo(null);
+                setOutletInfo(null);
             }
         };
-        fetchStoreInfo();
-    }, [selectedStoreUid, location.pathname, setSelectedStoreUid]);
+        fetchOutletInfo();
+    }, [selectedOutletUid, location.pathname, setSelectedOutletUid]);
 
     if (!business) return null;
 
     return (
-        <nav className="w-full bg-white/80 backdrop-blur-md border-b border-gray-100/50 px-4 py-4 flex items-center justify-between sticky top-0 z-50">
-            <div className="flex items-center gap-6">
+        <nav className="w-full bg-white/80 backdrop-blur-md border-b border-gray-100/50 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-50 overflow-hidden">
+            <div className="flex items-center gap-4 lg:gap-8 min-w-0 flex-1">
                 <button
                     onClick={() => {
-                        setSelectedStoreUid(null);
+                        setSelectedOutletUid(null);
                         navigate("/dashboard");
                     }}
                     className="flex items-center gap-3 text-gray-900 transition-colors group"
@@ -47,40 +47,49 @@ export default function Navbar() {
                     <div className="bg-blue-50 p-2.5 rounded-2xl transition-colors">
                         <FiHome className="text-2xl text-blue-600" />
                     </div>
-                    <span className="text-xl font-[1000] tracking-tight whitespace-nowrap transition-colors">
-                        Dashboard <span className="text-gray-300 font-normal mx-1">|</span> {business.name}
+                    <span className="text-xl font-[1000] tracking-tight whitespace-nowrap transition-colors flex items-center">
+                        <span className="hidden sm:inline">Dashboard</span>
+                        <span className="text-gray-300 font-normal mx-1">|</span>
+                        <span className="truncate max-w-[100px] sm:max-w-[150px] md:max-w-[200px]">{business.name}</span>
                     </span>
                 </button>
 
-                {storeInfo && (
-                    <div className="flex items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                        <div className="h-8 w-px bg-gray-200/60 rounded-full"></div>
-                        <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-100/50">
-                            {storeInfo.logoUrl ? (
+                {outletInfo && (
+                    <div className="flex items-center gap-2 md:gap-4 animate-in fade-in slide-in-from-left-4 duration-500 min-w-0">
+                        <div className="h-6 w-px bg-gray-200/60 rounded-full hidden sm:block"></div>
+                        <div className="flex items-center gap-2 md:gap-3 bg-indigo-50/50 px-2 md:px-4 py-1.5 rounded-full border border-indigo-100/50 min-w-0 max-w-[150px] sm:max-w-none">
+                            {outletInfo.logoUrl ? (
                                 <img
-                                    src={storeInfo.logoUrl}
-                                    alt={storeInfo.storeName}
-                                    className="w-7 h-7 rounded-full object-cover shadow-sm"
+                                    src={outletInfo.logoUrl}
+                                    alt={outletInfo.storeName}
+                                    className="w-6 h-6 md:w-8 md:h-8 rounded-full object-cover shadow-sm shrink-0"
                                 />
                             ) : (
-                                <div className="w-7 h-7 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-xs">
-                                    {storeInfo.storeName?.charAt(0)}
+                                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-[10px] md:text-xs shrink-0">
+                                    {outletInfo.storeName?.charAt(0)}
                                 </div>
                             )}
-                            <span className="font-semibold text-gray-800 text-sm tracking-tight pr-2">
-                                {storeInfo.storeName} {storeInfo.city && <span className="text-gray-400 font-normal">/ {storeInfo.city}</span>}
-                            </span>
+                            <div className="flex flex-col min-w-0 leading-tight">
+                                <span className="font-bold text-gray-800 text-[10px] md:text-xs truncate">
+                                    {outletInfo.storeName}
+                                </span>
+                                {outletInfo.city && (
+                                    <span className="text-gray-400 font-medium text-[8px] md:text-[10px] truncate uppercase tracking-tighter">
+                                        {outletInfo.city}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
             </div>
 
             <div className="flex items-center gap-2 sm:gap-5">
-                <div className="text-right hidden sm:block">
-                    <p className="text-xs text-gray-400 font-medium">{business.email}</p>
+                <div className="text-right hidden lg:block">
+                    <p className="text-xs text-gray-400 font-medium truncate max-w-[150px]">{business.email}</p>
                 </div>
                 <button
-                    onClick={() => navigate("/configure-stores")}
+                    onClick={() => navigate("/configure-outlets")}
                     className="flex items-center gap-2 px-3 sm:px-4 py-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-xl font-semibold transition-all group"
                     title="Settings"
                 >

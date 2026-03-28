@@ -10,7 +10,7 @@ interface FormState {
   email: string;
 }
 
-export default function StoreRegistration () {
+export default function OutletRegistration() {
   const [formData, setFormData] = useState<FormState>({
     name: "",
     address: "",
@@ -32,21 +32,21 @@ export default function StoreRegistration () {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     const payload = new FormData();
     payload.append("storeName", formData.name);
     payload.append("address", formData.address);
     payload.append("email", formData.email);
-  
+
     images.forEach((file) => payload.append("images", file));
 
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/create-store-ai",
+        "http://127.0.0.1:8000/create-outlet-ai",
         payload
       );
-      toast.success("Store registered successfully 🎉");
-      console.log("Store URL:", res.data);
+      toast.success("Outlet registered successfully 🎉");
+      console.log("Outlet URL:", res.data);
       // ⏳ small delay so user sees toast
       setTimeout(() => {
         navigate(res.data.storeUrl);
@@ -56,7 +56,7 @@ export default function StoreRegistration () {
 
       toast.error(
         error?.response?.data?.message ||
-        "Store registration failed ❌"
+        "Outlet registration failed ❌"
       );
     }
 
@@ -72,7 +72,7 @@ export default function StoreRegistration () {
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-center py-6">
-          <h2 className="text-2xl font-bold">Store Registration</h2>
+          <h2 className="text-2xl font-bold">Outlet Registration</h2>
           <p className="text-sm opacity-90 mt-1">
             Upload your menu & let AI do the rest 🚀
           </p>
@@ -80,9 +80,9 @@ export default function StoreRegistration () {
 
         {/* Body */}
         <div className="p-6 space-y-5">
-          {/* Store Name */}
+          {/* Outlet Name */}
           <div>
-            <label className="text-sm font-medium text-gray-700">Store Name</label>
+            <label className="text-sm font-medium text-gray-700">Outlet Name</label>
             <div className="mt-1 relative">
               <FiUser className="absolute left-3 top-3 text-gray-400" />
               <input
@@ -162,9 +162,14 @@ export default function StoreRegistration () {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-60"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {loading ? "Processing..." : "Register Store"}
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Processing...
+              </>
+            ) : "Register Store"}
           </button>
         </div>
       </form>

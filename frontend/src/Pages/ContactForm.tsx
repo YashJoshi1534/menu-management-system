@@ -11,7 +11,7 @@ export default function ContactForm() {
         userAddress: "",
     });
     const [loading, setLoading] = useState(false);
-    const [existingStores, setExistingStores] = useState<any[]>([]);
+    const [existingOutlets, setExistingOutlets] = useState<any[]>([]);
     const navigate = useNavigate();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,12 +26,12 @@ export default function ContactForm() {
             const res = await api.post("/contacts/", formData);
             localStorage.setItem("contactId", res.data.contactId);
 
-            if (res.data.existingStores && res.data.existingStores.length > 0) {
-                setExistingStores(res.data.existingStores);
+            if (res.data.existingOutlets && res.data.existingOutlets.length > 0) {
+                setExistingOutlets(res.data.existingOutlets);
                 toast.success("Welcome back! " + res.data.message);
             } else {
                 toast.success("Contact registered! 🚀");
-                setTimeout(() => navigate("/store-setup"), 1000);
+                setTimeout(() => navigate("/outlet-setup"), 1000);
             }
 
         } catch (error: any) {
@@ -42,19 +42,19 @@ export default function ContactForm() {
         }
     };
 
-    if (existingStores.length > 0) {
+    if (existingOutlets.length > 0) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex justify-center items-center px-4">
                 <div className="bg-white w-full max-w-lg rounded-xl shadow-xl p-8">
                     <h2 className="text-3xl font-bold text-center mb-2 text-gray-800">Welcome Back! 👋</h2>
-                    <p className="text-center text-gray-500 mb-6">Select a store to view or start a new process.</p>
+                    <p className="text-center text-gray-500 mb-6">Select an outlet to view or start a new process.</p>
 
                     <div className="space-y-4 mb-8">
-                        {existingStores.map((store: any) => (
-                            <div key={store.storeUid} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:border-blue-300 transition group">
-                                <span className="font-bold text-gray-800">{store.storeName}</span>
+                        {existingOutlets.map((outlet: any) => (
+                            <div key={outlet.storeUid} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:border-blue-300 transition group">
+                                <span className="font-bold text-gray-800">{outlet.storeName}</span>
                                 <a
-                                    href={`/${store.storeUid}/${store.storeName}`}
+                                    href={`/${outlet.storeUid}/${outlet.storeName}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-blue-600 flex items-center gap-2 text-sm font-semibold hover:underline"
@@ -66,14 +66,14 @@ export default function ContactForm() {
                     </div>
 
                     <button
-                        onClick={() => navigate("/store-setup")}
+                        onClick={() => navigate("/outlet-setup")}
                         className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg"
                     >
                         <FiPlusCircle className="text-xl" /> Start New Process
                     </button>
 
                     <button
-                        onClick={() => setExistingStores([])}
+                        onClick={() => setExistingOutlets([])}
                         className="w-full mt-4 text-gray-500 hover:text-gray-700 text-sm"
                     >
                         Go Back
@@ -129,9 +129,14 @@ export default function ContactForm() {
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                    className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                    {loading ? "Processing..." : "Next: Store Setup"}
+                    {loading ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                            Processing...
+                        </>
+                    ) : "Next: Outlet Setup"}
                 </button>
             </form>
         </div>

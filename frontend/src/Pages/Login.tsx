@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import api from "../api/client";
-import { FiMail, FiUser, FiArrowLeft, FiTag, FiPhone, FiChevronDown } from "react-icons/fi";
+import { FiMail, FiUser, FiTag, FiPhone, FiChevronDown, FiUploadCloud, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 
@@ -10,17 +10,20 @@ export default function Login() {
     const [businessType, setBusinessType] = useState("");
     const [businessTypes, setBusinessTypes] = useState<string[]>([]);
     const [phone, setPhone] = useState("");
-    const [step, setStep] = useState<"email" | "details">("email");
+    const [logoData, setLogoData] = useState<string | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [step, setStep] = useState<"email" | "details">("email");
+    const [isNewAccount, setIsNewAccount] = useState<boolean | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
         const fetchConfig = async () => {
             try {
-                const res = await api.get("/admin/business-types");
-                setBusinessTypes(res.data || []);
+                const adminRes = await api.get("/admin/business-types");
+                setBusinessTypes(adminRes.data || []);
             } catch (error) {
-                console.error("Failed to fetch admin config", error);
+                console.error("Failed to fetch business types", error);
                 setBusinessTypes(["Restaurant", "Cafe", "Bar", "Hotel", "Other"]);
             }
         };
@@ -33,8 +36,22 @@ export default function Login() {
         step === "email" ? isEmailValid :
             name.trim().length > 0 && businessType.length > 0 && isPhoneValid;
 
-    const handleBack = () => {
-        setStep("email");
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLogoData(reader.result as string);
+                setLogoPreview(URL.createObjectURL(file));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removeLogo = () => {
+        setLogoData(null);
+        if (logoPreview) URL.revokeObjectURL(logoPreview);
+        setLogoPreview(null);
     };
 
     const handleContinue = async (e: React.FormEvent) => {
@@ -46,10 +63,19 @@ export default function Login() {
             try {
                 const res = await api.post("/auth/check-email", { email });
                 if (res.data.exists) {
+                    // Existing user — send OTP and navigate to OTP page
                     await api.post("/auth/send-otp", { email });
                     toast.success("OTP sent! 📧");
-                    navigate("/verify-otp", { state: { email, name: res.data.business.name, isNewAccount: false } });
+                    navigate("/verify-otp", {
+                        state: {
+                            email,
+                            name: res.data.business.name,
+                            isNewAccount: false,
+                        }
+                    });
                 } else {
+                    // New user — show details step
+                    setIsNewAccount(true);
                     setStep("details");
                 }
             } catch (error: any) {
@@ -57,12 +83,22 @@ export default function Login() {
             } finally {
                 setLoading(false);
             }
-        } else {
+        } else if (step === "details") {
+            // New user filled details — send OTP and navigate to OTP page
             setLoading(true);
             try {
                 await api.post("/auth/send-otp", { email, name });
                 toast.success("OTP sent! 📧");
-                navigate("/verify-otp", { state: { email, name, businessType, phone, isNewAccount: true } });
+                navigate("/verify-otp", {
+                    state: {
+                        email,
+                        name,
+                        businessType,
+                        phone,
+                        logoData,
+                        isNewAccount: true,
+                    }
+                });
             } catch (error: any) {
                 toast.error(error?.response?.data?.detail || "An error occurred");
             } finally {
@@ -80,16 +116,6 @@ export default function Login() {
 
             <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-3xl shadow-xl p-10 z-10 border border-white relative">
 
-                {step !== "email" && (
-                    <button
-                        type="button"
-                        onClick={handleBack}
-                        className="absolute top-6 left-6 text-gray-400 hover:text-gray-700 transition flex items-center gap-1"
-                    >
-                        <FiArrowLeft /> Back
-                    </button>
-                )}
-
                 <div className="text-center mb-8 pt-4">
                     <div className="bg-blue-600 text-white w-14 h-14 rounded-2xl grid place-items-center mx-auto mb-6 shadow-lg shadow-blue-600/30">
                         <span className="text-2xl font-black leading-none select-none">S</span>
@@ -104,22 +130,28 @@ export default function Login() {
 
                 <form onSubmit={handleContinue} className="space-y-6">
                     <div className="space-y-4">
-                        {step === "email" && (
-                            <div className="relative group animate-in fade-in duration-300">
-                                <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-                                <input
-                                    type="email"
-                                    placeholder="Business Email"
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
-                                />
-                            </div>
-                        )}
+                        {/* Email — always visible */}
+                        <div className="relative group animate-in fade-in duration-300">
+                            <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                            <input
+                                type="email"
+                                placeholder="Business Email"
+                                required
+                                value={email}
+                                onChange={(e) => {
+                                    setEmail(e.target.value);
+                                    if (step !== "email") {
+                                        setStep("email");
+                                        setIsNewAccount(null);
+                                    }
+                                }}
+                                className={`w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium ${step !== "email" ? "opacity-60" : ""}`}
+                            />
+                        </div>
 
-                        {step === "details" && (
-                            <div className="space-y-4 animate-in fade-in duration-300 slide-in-from-right-4">
+                        {/* Business Details — only for new accounts */}
+                        {step === "details" && isNewAccount && (
+                            <div className="space-y-4 animate-in fade-in duration-300 slide-in-from-top-4">
                                 <div className="relative group">
                                     <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                                     <input
@@ -159,6 +191,25 @@ export default function Login() {
                                         className="w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
                                     />
                                 </div>
+
+                                <div className="relative group flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-gray-700 ml-1 mt-2">Business Logo <span className="text-gray-400 font-normal">(Optional)</span></label>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex-1 border-2 border-dashed border-gray-200 bg-gray-50 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all text-gray-500 hover:text-blue-600">
+                                            <FiUploadCloud className="text-2xl mb-1" />
+                                            <span className="text-sm font-bold">Upload Logo</span>
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                                        </label>
+                                        {logoPreview && (
+                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden shadow-sm border border-gray-200 shrink-0 group/logo">
+                                                <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
+                                                <button type="button" onClick={removeLogo} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover/logo:opacity-100 transition-opacity hover:bg-red-500">
+                                                    <FiX className="text-xs" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -167,19 +218,24 @@ export default function Login() {
                         type="submit"
                         disabled={loading || !isFormValid}
                         className={`w-full p-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 active:scale-95 ${loading || !isFormValid
-                                ? "bg-gray-400 text-gray-200 cursor-not-allowed"
-                                : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl"
+                            ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl"
                             }`}
                     >
                         {loading ? (
-                            <div className="w-6 h-6 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                        ) : "Continue"}
+                            <>
+                                <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                <span>Please wait...</span>
+                            </>
+                        ) : "Continue →"}
                     </button>
                 </form>
 
-                <p className="mt-6 text-center text-sm font-medium text-gray-600">
-                    We'll send a verification code to your email.
-                </p>
+                {step === "email" && (
+                    <p className="mt-6 text-center text-sm font-medium text-gray-600">
+                        We'll send a verification code to your email.
+                    </p>
+                )}
 
                 <p className="mt-8 text-center text-xs font-medium text-gray-400">
                     By continuing, you agree to our <a href="/terms" className="text-blue-500 hover:underline">Terms of Service</a> & <a href="/privacy" className="text-blue-500 hover:underline">Privacy</a>.

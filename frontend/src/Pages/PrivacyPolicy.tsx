@@ -16,12 +16,12 @@ export default function PrivacyPolicy() {
 
                 <div className="mt-12">
                     <h1 className="text-4xl font-black text-gray-900 mb-8 tracking-tight">Privacy Policy</h1>
-                    
+
                     <div className="space-y-8 text-gray-600 leading-relaxed">
                         <section>
                             <h2 className="text-xl font-bold text-gray-800 mb-4">1. Information We Collect</h2>
                             <p>
-                                We collect information you provide directly to us when you create an account, such as your business name, email address, and phone number. We also collect data about your store locations and menus to provide our core services.
+                                We collect information you provide directly to us when you create an account, such as your business name, email address, and phone number. We also collect data about your outlet locations and menus to provide our core services.
                             </p>
                         </section>
 

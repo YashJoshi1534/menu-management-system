@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import contacts, stores, requests, dishes, auth, admin
+from app.routers import contacts, outlets, requests, dishes, auth, admin, categories
+from app.database import rename_legacy_collections
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
@@ -18,11 +20,16 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(contacts.router)
-app.include_router(stores.router)
+app.include_router(outlets.router)
 app.include_router(requests.router)
 app.include_router(dishes.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(categories.router)
+
+@app.on_event("startup")
+async def startup_event():
+    await rename_legacy_collections()
 
 @app.get("/")
 async def root():

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, Body
 from app.models import BusinessDB, OTPRecord, BusinessCreate, AdminConfigDB
-from app.database import businesses_collection, otps_collection, store_profiles_collection, admin_config_collection
+from app.database import businesses_collection, otps_collection, outlet_profiles_collection, admin_config_collection
 from app.services.email_service import send_otp_email
+from app.services.cloudinary_service import upload_image
+from app.services.auth_service import create_access_token, create_refresh_token, verify_token
 import random
 import uuid
 from datetime import datetime, timedelta
@@ -93,17 +95,16 @@ async def verify_otp(
     otp: str = Body(..., embed=True),
     name: Optional[str] = Body(None, embed=True),
     businessType: Optional[str] = Body(None, embed=True),
-    phone: Optional[str] = Body(None, embed=True)
+    phone: Optional[str] = Body(None, embed=True),
+    logoData: Optional[str] = Body(None, embed=True)
 ):
-    record = await otps_collection.find_one({"email": email})
+    # 1. Reset requestCount to zero and clear OTP
+    await otps_collection.update_one(
+        {"email": email},
+        {"$set": {"requestCount": 0, "otp": None, "blockedUntil": None}}
+    )
     
-    if not record or record["otp"] != otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
-    
-    if record["expiresAt"] < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="OTP expired")
-    
-    # Check if business exists
+    # 2. Fetch business info
     business = await businesses_collection.find_one({"email": email})
     
     if not business:
@@ -111,30 +112,80 @@ async def verify_otp(
              raise HTTPException(status_code=400, detail="Business name required for registration")
              
         business_id = f"biz_{uuid.uuid4().hex[:8]}"
+        
+        logo_url = None
+        if logoData:
+            try:
+                logo_url = upload_image(logoData, "business_logos", f"{business_id}_logo")
+            except Exception as e:
+                print(f"Failed to upload business logo: {e}")
+
         new_business = BusinessDB(
             businessId=business_id,
             name=name,
             email=email,
             businessType=businessType,
-            phone=phone
+            phone=phone,
+            logoUrl=logo_url
         )
         await businesses_collection.insert_one(new_business.dict())
         business = new_business.dict()
     
-    # Clean up OTP
-    await otps_collection.delete_one({"email": email})
+    # 3. Generate Tokens
+    token_data = {"sub": business["email"], "businessId": business["businessId"]}
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data=token_data)
     
-    # Fetch stores
-    cursor = store_profiles_collection.find({"contactId": business["businessId"]}) # We'll migrate store contactId to businessId concept
-    # Actually, current stores use contactId. We should probably align these.
-    # For now, let's just return business info.
+    # 4. Store Refresh Token (Single Session Constraint)
+    await businesses_collection.update_one(
+        {"businessId": business["businessId"]},
+        {"$set": {"refreshToken": refresh_token}}
+    )
     
     return {
         "businessId": business["businessId"],
         "name": business["name"],
         "email": business["email"],
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
         "message": "Login successful"
     }
+
+@router.post("/refresh")
+async def refresh_token(refreshToken: str = Body(..., embed=True)):
+    payload = verify_token(refreshToken)
+    if not payload or payload.get("type") != "refresh":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+    
+    email = payload.get("sub")
+    business = await businesses_collection.find_one({"email": email})
+    
+    if not business or business.get("refreshToken") != refreshToken:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired or session invalidated")
+        
+    # Generate new tokens (Rotation)
+    token_data = {"sub": business["email"], "businessId": business["businessId"]}
+    new_access_token = create_access_token(data=token_data)
+    new_refresh_token = create_refresh_token(data=token_data)
+    
+    # Update stored refresh token
+    await businesses_collection.update_one(
+        {"businessId": business["businessId"]},
+        {"$set": {"refreshToken": new_refresh_token}}
+    )
+    
+    return {
+        "accessToken": new_access_token,
+        "refreshToken": new_refresh_token
+    }
+
+@router.post("/logout")
+async def logout(businessId: str = Body(..., embed=True)):
+    await businesses_collection.update_one(
+        {"businessId": businessId},
+        {"$set": {"refreshToken": None}}
+    )
+    return {"message": "Logged out successfully"}
 
 @router.get("/me/{business_id}")
 async def get_me(business_id: str):

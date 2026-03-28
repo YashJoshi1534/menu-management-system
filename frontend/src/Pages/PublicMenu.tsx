@@ -1,6 +1,27 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api/client";
+import { FiPhone, FiMapPin, FiNavigation } from "react-icons/fi";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Fix leaflet icon issue in React
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+    iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+});
+
+function MapUpdater({ center }: { center: [number, number] }) {
+    const map = useMap();
+    useEffect(() => {
+        map.setView(center, map.getZoom());
+    }, [center, map]);
+    return null;
+}
 
 interface Dish {
     dishId: string;
@@ -16,26 +37,43 @@ interface Category {
     dishes: Dish[];
 }
 
-interface StoreData {
+interface OutletData {
     storeName: string;
     logoUrl: string;
+    address: string;
+    city: string;
+    phone?: string;
+    latitude?: number | null;
+    longitude?: number | null;
 }
 
 export default function PublicMenu() {
-    const { storeUid } = useParams();
-    const [store, setStore] = useState<StoreData | null>(null);
+    const { outletUid } = useParams();
+    const [outlet, setOutlet] = useState<OutletData | null>(null);
     const [menu, setMenu] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [theme] = useState<"light" | "dark">("light");
 
     useEffect(() => {
-        if (storeUid) fetchMenu();
-    }, [storeUid]);
+        if (outletUid) {
+            fetchMenu();
+            recordScan();
+        }
+    }, [outletUid]);
+
+    const recordScan = async () => {
+        try {
+            await api.post(`/outlets/${outletUid}/scan`);
+            console.log("Scan recorded successfully for", outletUid);
+        } catch (error) {
+            console.error("Failed to record scan", error);
+        }
+    };
 
     const fetchMenu = async () => {
         try {
-            const res = await api.get(`/stores/${storeUid}/menu`);
-            setStore(res.data.store);
+            const res = await api.get(`/outlets/${outletUid}/menu`);
+            setOutlet(res.data.outlet);
             setMenu(res.data.menu);
         } catch (error) {
             console.error("Failed to load menu", error);
@@ -53,10 +91,10 @@ export default function PublicMenu() {
             </div>
         );
 
-    if (!store)
+    if (!outlet)
         return (
             <div className="min-h-screen flex items-center justify-center text-lg font-medium">
-                Store not found
+                Outlet not found
             </div>
         );
 
@@ -70,21 +108,30 @@ export default function PublicMenu() {
                 <div className="max-w-5xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
 
                     <div className="flex items-center gap-6">
-                        {store.logoUrl && (
+                        {outlet.logoUrl && (
                             <img
-                                src={store.logoUrl}
-                                alt={store.storeName}
+                                src={outlet.logoUrl}
+                                alt={outlet.storeName}
                                 className="w-20 h-20 rounded-2xl object-cover shadow-lg"
                             />
                         )}
 
                         <div>
                             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-                                {store.storeName}
+                                {outlet.storeName}
                             </h1>
-                            <p className={`mt-2 text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-                                Crafted with passion • Fresh ingredients • Premium taste
-                            </p>
+                            <div className="flex flex-wrap gap-4 mt-3">
+                                <div className={`flex items-center gap-2 text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+                                    <FiMapPin className="text-blue-500" />
+                                    <span>{outlet.city}</span>
+                                </div>
+                                {outlet.phone && (
+                                    <div className={`flex items-center gap-2 text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+                                        <FiPhone className="text-blue-500" />
+                                        <span>{outlet.phone}</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -111,13 +158,13 @@ export default function PublicMenu() {
                             {category.dishes.map((dish) => (
                                 <div
                                     key={dish.dishId}
-                                    className={`rounded-2xl p-5 flex gap-5 transition-all duration-300 hover:shadow-xl ${isDark
+                                    className={`rounded-2xl p-4 sm:p-5 flex gap-4 sm:gap-5 transition-all duration-300 hover:shadow-xl ${isDark
                                         ? "bg-gray-900 border border-gray-800"
                                         : "bg-white border border-gray-100"
                                         }`}
                                 >
                                     {/* Image */}
-                                    <div className="w-28 h-28 rounded-xl overflow-hidden shrink-0">
+                                    <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl overflow-hidden shrink-0">
                                         {dish.imageUrl ? (
                                             <img
                                                 src={dish.imageUrl}
@@ -176,12 +223,77 @@ export default function PublicMenu() {
                         No menu items available.
                     </div>
                 )}
+
+                {/* FIND US SECTION */}
+                <section className="pt-10 border-t border-gray-100/50">
+                    <div className="flex items-center justify-between mb-8">
+                        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+                            Find Us
+                        </h2>
+                        <div className={`h-[2px] flex-1 ml-6 ${isDark ? "bg-gray-800" : "bg-gray-200"}`} />
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-10 items-stretch">
+                        <div className={`${isDark ? "bg-gray-900 border-gray-800" : "bg-white border-gray-100"} border shadow-sm rounded-[2rem] p-8 space-y-6`}>
+                            <div className="space-y-2">
+                                <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">Location</p>
+                                <p className={`text-lg font-bold leading-snug ${isDark ? "text-gray-200" : "text-gray-800"}`}>
+                                    {outlet.address}
+                                </p>
+                                <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+                                    {outlet.city}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">Contact</p>
+                                <p className={`text-lg font-bold ${isDark ? "text-gray-200" : "text-gray-800"}`}>
+                                    {outlet.phone || "No phone provided"}
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    const encodedAddr = encodeURIComponent(`${outlet.address}, ${outlet.city}`);
+                                    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddr}`, "_blank");
+                                }}
+                                className="flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:translate-y-1"
+                            >
+                                <FiNavigation className="text-base" />
+                                Get Directions
+                            </button>
+                        </div>
+
+                        <div className="h-[300px] md:h-auto min-h-[300px] rounded-[2rem] overflow-hidden border-8 border-white shadow-xl ring-1 ring-gray-100 z-0 relative">
+                            <MapContainer
+                                center={[outlet.latitude || 20.5937, outlet.longitude || 78.9629]}
+                                zoom={outlet.latitude ? 16 : 5}
+                                style={{ height: '100%', width: '100%' }}
+                                scrollWheelZoom={false}
+                                boxZoom={false}
+                                dragging={true}
+                                zoomControl={false}
+                            >
+                                <TileLayer
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                />
+                                {outlet.latitude && outlet.longitude && (
+                                    <>
+                                        <Marker position={[outlet.latitude, outlet.longitude]} />
+                                        <MapUpdater center={[outlet.latitude, outlet.longitude]} />
+                                    </>
+                                )}
+                            </MapContainer>
+                        </div>
+                    </div>
+                </section>
             </div>
 
             {/* FOOTER */}
             <footer className={`text-center py-10 text-sm ${isDark ? "text-gray-500 border-t border-gray-800" : "text-gray-400 border-t border-gray-200"
                 }`}>
-                © {new Date().getFullYear()} {store.storeName}. All rights reserved.
+                © {new Date().getFullYear()} {outlet.storeName}. All rights reserved.
             </footer>
         </div>
     );

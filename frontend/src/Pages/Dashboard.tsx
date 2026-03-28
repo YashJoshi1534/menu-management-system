@@ -1,63 +1,85 @@
-import { useState, useEffect } from "react";
-import api from "../api/client";
-import { 
-    FiPlus, FiShoppingBag, FiUser, FiArrowLeft, FiChevronRight, 
-    FiPlayCircle, FiExternalLink, FiEdit2, FiX, FiCheck, 
-    FiChevronDown, FiTag, FiPhone, FiMail, FiSearch 
-} from "react-icons/fi";
-import { useNavigate, useLocation } from "react-router-dom";
-import toast from "react-hot-toast";
+import { useEffect, useState } from "react";
+import { FiPlus, FiSearch, FiArrowRight, FiSave, FiDownload, FiX, FiRefreshCw } from "react-icons/fi";
+import { QRCodeCanvas } from "qrcode.react";
 import { useAuth } from "../context/AuthContext";
-import useDebounce from "../hooks/useDebounce";
+import api from "../api/client";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import { useDebounce } from "use-debounce";
+import { 
+    XAxis, 
+    YAxis, 
+    CartesianGrid, 
+    Tooltip, 
+    ResponsiveContainer,
+    AreaChart,
+    Area
+} from 'recharts';
 
-type ViewType = "overview" | "stores" | "business";
+interface Outlet {
+    storeUid: string;
+    storeName: string;
+    address: string;
+    city: string;
+    zipCode: string;
+    phone?: string;
+    logoUrl?: string;
+    isActive?: boolean;
+}
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const location = useLocation();
-    
-    // Derive activeView from route
-    const getActiveView = (): ViewType => {
-        if (location.pathname === "/view-stores") return "stores";
-        if (location.pathname === "/business-details") return "business";
-        return "overview";
-    };
+    const { business, setSelectedOutletUid } = useAuth();
 
-    const activeView = getActiveView();
-    const [loading, setLoading] = useState(false);
-    const [stores, setStores] = useState<any[]>([]);
+    // Outlet listing state
+    const [outlets, setOutlets] = useState<Outlet[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const debouncedSearchQuery = useDebounce(searchQuery, 400);
-    const [isEditingBusiness, setIsEditingBusiness] = useState(false);
-    const [businessData, setBusinessData] = useState({
-        name: "",
-        businessType: "",
-        phone: ""
-    });
-    const [businessTypes, setBusinessTypes] = useState<string[]>([]);
-    const [updateLoading, setUpdateLoading] = useState(false);
-    const { business, setSelectedStoreUid } = useAuth();
+    const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
+    const [pageLoading, setPageLoading] = useState(true);
+    const [loadingOutlets, setLoadingOutlets] = useState(false);
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalOutlets, setTotalOutlets] = useState(0);
+    const limit = 10;
+
+    // QR Code state
+    const [qrModalOutlet, setQrModalOutlet] = useState<Outlet | null>(null);
+    const [analyticsOutlet, setAnalyticsOutlet] = useState<Outlet | null>(null);
+    const [analyticsData, setAnalyticsData] = useState<Record<string, any[]>>({});
+    const [loadingAnalytics, setLoadingAnalytics] = useState<Record<string, boolean>>({});
+
+    const downloadQRCode = (outletName: string) => {
+        const canvas = document.getElementById("qr-gen") as HTMLCanvasElement;
+        if (!canvas) return;
+        const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+        let downloadLink = document.createElement("a");
+        downloadLink.href = pngUrl;
+        downloadLink.download = `${outletName.replace(/\s+/g, "_")}_QR.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    };
 
     useEffect(() => {
         if (!business) {
+            setPageLoading(false);
             navigate("/");
             return;
         }
 
-        // Clear abandoned store setup drafts and requests when arriving at Dashboard
-        const cleanupKeys = ["store_setup_name", "store_setup_address", "store_setup_city", "store_setup_zip", "requestId"];
+        // Clear abandoned outlet setup drafts and requests when arriving at Dashboard
+        const cleanupKeys = ["outlet_setup_name", "outlet_setup_address", "outlet_setup_city", "outlet_setup_zip", "requestId"];
         cleanupKeys.forEach(key => localStorage.removeItem(key));
-        
+
         const loadInitialData = async () => {
-            setLoading(true);
             try {
-                await Promise.all([
-                    fetchStores(debouncedSearchQuery),
-                    fetchBusinessDetails(),
-                    fetchBusinessTypes()
-                ]);
+                await fetchOutlets();
+            } catch (error) {
+                console.error("Initial data load failed", error);
             } finally {
-                setLoading(false);
+                setPageLoading(false);
             }
         };
 
@@ -65,386 +87,457 @@ export default function Dashboard() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [business]);
 
-    // Fetch stores when search changes
+    // Fetch outlets when search or page changes
     useEffect(() => {
         if (business) {
-            fetchStores(debouncedSearchQuery);
+            fetchOutlets();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [business, currentPage, debouncedSearchQuery]);
+
+    // Reset page to 1 when search term changes
+    useEffect(() => {
+        setCurrentPage(1);
     }, [debouncedSearchQuery]);
 
-    const fetchStores = async (searchTerm: string = "") => {
+    const fetchAnalytics = async (outletUid: string) => {
+        setLoadingAnalytics(prev => ({ ...prev, [outletUid]: true }));
         try {
-            const endpoint = `/businesses/${business?.businessId}/stores${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ""}`;
-            const res = await api.get(endpoint);
-            const activeStores = res.data.filter((s: any) => s.isActive !== false);
-            setStores(activeStores);
+            const res = await api.get(`/outlets/${outletUid}/analytics`);
+            setAnalyticsData(prev => ({ ...prev, [outletUid]: res.data }));
         } catch (error) {
-            toast.error("Failed to fetch stores");
+            console.error("Failed to fetch analytics", error);
+        } finally {
+            setLoadingAnalytics(prev => ({ ...prev, [outletUid]: false }));
         }
     };
 
-    const fetchBusinessDetails = async () => {
+    const toggleAnalytics = (outlet: Outlet) => {
+        setAnalyticsOutlet(outlet);
+        fetchAnalytics(outlet.storeUid);
+    };
+
+    const fetchOutlets = async () => {
+        if (!business?.businessId) return;
+        setLoadingOutlets(true);
         try {
-            const res = await api.get(`/auth/me/${business?.businessId}`);
-            setBusinessData({
-                name: res.data.name || "",
-                businessType: res.data.businessType || "",
-                phone: res.data.phone || ""
+            const res = await api.get(`/businesses/${business.businessId}/outlets`, {
+                params: {
+                    search: debouncedSearchQuery,
+                    page: currentPage,
+                    limit: limit
+                }
             });
+            setOutlets(res.data.outlets);
+            setTotalPages(res.data.totalPages);
+            setTotalOutlets(res.data.total);
         } catch (error) {
-            console.error("Failed to fetch business details", error);
-        }
-    };
-
-    const fetchBusinessTypes = async () => {
-        try {
-            const res = await api.get("/admin/business-types");
-            setBusinessTypes(res.data || []);
-        } catch (error) {
-            setBusinessTypes(["Restaurant", "Cafe", "Bar", "Hotel", "Other"]);
-        }
-    };
-
-    const handleUpdateBusiness = async () => {
-        setUpdateLoading(true);
-        try {
-            await api.put(`/auth/me/${business?.businessId}`, businessData);
-            toast.success("Business updated! ✨");
-            setIsEditingBusiness(false);
-        } catch (error: any) {
-            toast.error(error?.response?.data?.detail || "Update failed");
+            toast.error("Failed to fetch outlets");
         } finally {
-            setUpdateLoading(false);
+            setLoadingOutlets(false);
         }
     };
 
-    const startRequest = async (storeUid: string) => {
-        setLoading(true);
-        try {
-            // Try resuming active request
-            try {
-                const activeRes = await api.get(`/stores/${storeUid}/requests/active`);
-                if (activeRes.data && activeRes.data.requestId) {
-                    localStorage.setItem("requestId", activeRes.data.requestId);
-                    setSelectedStoreUid(storeUid);
-                    toast.success("Resuming existing process! 🚀");
-                    
-                    const step = activeRes.data.currentStep;
-                    const path = step === 1 ? "/menu-upload" : 
-                                 step === 2 ? "/dish-generation" : 
-                                 step === 3 ? "/dish-generation" : "/completion";
-                                 
-                    setTimeout(() => navigate(path), 800);
-                    return;
-                }
-            } catch (e: any) {
-                // If 404, we just fall through to start a new request
-                if (e.response && e.response.status !== 404) {
-                    console.error("Error checking active request:", e);
-                }
-            }
-
-            // Start new request if no active one found
-            const res = await api.post(`/stores/${storeUid}/requests`);
-            localStorage.setItem("requestId", res.data.requestId);
-            setSelectedStoreUid(storeUid);
-            toast.success("Request Started! 🚀");
-            setTimeout(() => navigate("/menu-upload"), 800);
-        } catch (error: any) {
-            toast.error(error?.response?.data?.detail || "Failed to start request");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const renderOverview = () => (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mx-auto py-10">
-            {/* Stores Card */}
-            <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-10 flex flex-col items-center text-center group hover:-translate-y-2 transition-all duration-300">
-                <div className="bg-blue-50 w-24 h-24 rounded-3xl flex items-center justify-center mb-8 shadow-inner group-hover:bg-blue-100 transition-colors">
-                    <FiShoppingBag className="text-4xl text-blue-600" />
-                </div>
-                <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Stores</h2>
-                <p className="text-gray-500 mb-8 font-medium">Manage and view all your registered store locations.</p>
-                <div className="flex items-center gap-2 mb-10 px-4 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-bold">
-                    <span>{stores.length} Registered Stores</span>
-                </div>
-                <button
-                    onClick={() => navigate("/view-stores")}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg active:scale-95"
-                >
-                    View Stores <FiChevronRight />
-                </button>
+    if (pageLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
+        );
+    }
 
-            {/* Business Card */}
-            <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-10 flex flex-col items-center text-center group hover:-translate-y-2 transition-all duration-300">
-                <div className="bg-indigo-50 w-24 h-24 rounded-3xl flex items-center justify-center mb-8 shadow-inner group-hover:bg-indigo-100 transition-colors">
-                    <FiUser className="text-4xl text-indigo-600" />
+    const renderOutletsView = () => (
+        <div className="space-y-12 py-8 animate-in fade-in duration-700 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Search and Add Button Area */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white/40 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/60 shadow-sm">
+                <div className="flex flex-col gap-1">
+                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Your Outlets</h2>
+                    <p className="text-sm text-gray-500 font-medium">Manage your business locations and menus</p>
                 </div>
-                <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Business Detail</h2>
-                <p className="text-gray-500 mb-8 font-medium">Update your business information and contact details.</p>
-                <div className="h-[2.5rem] mb-10 text-gray-400 font-bold">{businessData.name || "N/A"}</div>
-                <button
-                    onClick={() => navigate("/business-details")}
-                    className="w-full bg-gray-900 hover:bg-black text-white py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg active:scale-95"
-                >
-                    View Business Detail <FiChevronRight />
-                </button>
-            </div>
-        </div>
-    );
-
-    const renderStoresView = () => (
-        <div className="space-y-10 py-6 animate-in fade-in duration-500 max-w-none mx-auto px-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                    <button 
-                        onClick={() => navigate("/dashboard")}
-                        className="flex items-center gap-2 text-gray-500 hover:text-blue-600 font-bold transition-colors group whitespace-nowrap"
-                    >
-                        <FiArrowLeft className="group-hover:-translate-x-1 transition-transform" /> Back to Dashboard
-                    </button>
-                    <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
-                    <div className="relative flex-1 sm:w-64 z-10">
-                        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="relative w-full sm:w-80 group">
+                        <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                         <input
                             type="text"
-                            placeholder="Search viewable stores..."
+                            placeholder="Search outlets by name or city..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 hover:border-blue-300 focus:border-blue-500 rounded-xl outline-none transition-all shadow-sm text-sm font-medium"
+                            className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 hover:border-blue-300 focus:border-blue-500 rounded-2xl outline-none transition-all shadow-sm text-sm font-medium"
                         />
                     </div>
+                    <button
+                        onClick={() => {
+                            setSelectedOutletUid(null);
+                            navigate("/outlet-setup");
+                        }}
+                        className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-[1.25rem] font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-200 active:scale-95 shrink-0"
+                    >
+                        <FiPlus className="text-xl" /> <span>Add New Outlet</span>
+                    </button>
                 </div>
-                <button
-                    onClick={() => {
-                        setSelectedStoreUid(null);
-                        navigate("/store-setup");
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 shrink-0"
-                >
-                    <FiPlus /> Add New Store
-                </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {stores.map((store) => (
-                    <div key={store.storeUid} className="relative bg-white/90 backdrop-blur-md rounded-[2rem] shadow-lg border border-white overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-1">
-                        <button 
-                            onClick={() => navigate(`/manage-menu/${store.storeUid}`)}
-                            className="absolute top-6 right-6 w-10 h-10 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-xl flex items-center justify-center border border-gray-100/50 active:scale-90 transition-all z-10"
-                            title="Edit Menu"
-                        >
-                            <FiEdit2 size={18} />
-                        </button>
+            <div className="relative min-h-[400px]">
+                {loadingOutlets && (
+                    <div className="absolute inset-0 bg-white/20 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-[3rem] transition-all">
+                        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin shadow-lg"></div>
+                        <p className="mt-4 text-blue-600 font-bold animate-pulse text-sm">Loading your outlets...</p>
+                    </div>
+                )}
 
-                        <div className="p-8">
-                            <div className="flex items-center gap-5 mb-8">
-                                {store.logoUrl ? (
-                                    <img src={store.logoUrl} className="w-20 h-20 rounded-2xl object-cover border-2 border-white shadow-sm" alt="" />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-2xl bg-indigo-50 flex items-center justify-center border-2 border-white shadow-sm">
-                                        <span className="text-indigo-600 font-extrabold text-2xl">{store.storeName?.charAt(0)}</span>
-                                    </div>
-                                )}
-                                <div className="flex-1 min-w-0 pr-8">
-                                    <h3 className="text-2xl font-extrabold text-gray-900 truncate tracking-tight">{store.storeName}</h3>
-                                    {(store.city || store.zipCode) && (
-                                        <p className="text-sm text-gray-400 font-mono mt-1 opacity-70 truncate">
-                                            {[store.city, store.zipCode].filter(Boolean).join(", ")}
-                                        </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-12">
+                    {outlets.map((outlet) => (
+                        <div key={outlet.storeUid} className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 flex flex-col gap-8 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/30 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-blue-100/50 transition-colors" />
+                            
+                            {/* Header Part: Logo + Name + Status */}
+                            <div className="flex items-start gap-5 relative">
+                                <div className="relative">
+                                    {outlet.logoUrl ? (
+                                        <img src={outlet.logoUrl} alt={outlet.storeName} className="w-20 h-20 rounded-[1.75rem] object-cover shadow-md bg-gray-50 border-4 border-white" />
+                                    ) : (
+                                        <div className="w-20 h-20 rounded-[1.75rem] bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center text-blue-600 text-3xl font-black shadow-md border-4 border-white">
+                                            {outlet.storeName?.charAt(0)}
+                                        </div>
                                     )}
+                                </div>
+
+                                <div className="flex-1 min-w-0 pt-1">
+                                    <h3 className="text-2xl font-black text-gray-900 tracking-tight truncate leading-none">
+                                        {outlet.storeName}
+                                    </h3>
+                                    <p className="text-gray-400 text-sm font-medium truncate mt-2">
+                                        {outlet.address}, {outlet.city}
+                                    </p>
+                                    <div className="mt-4 flex items-center gap-2 w-fit px-3 py-1.5 bg-gray-50 rounded-full border border-gray-100 group-hover:bg-white transition-colors">
+                                        <div className={`w-2 h-2 rounded-full ${outlet.isActive ? 'bg-green-500 animate-pulse ring-4 ring-green-100' : 'bg-gray-300'}`} />
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${outlet.isActive ? 'text-green-600' : 'text-gray-400'}`}>
+                                            STATUS: {outlet.isActive ? 'LIVE' : 'OFFLINE'}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <div>
-                                    <button
-                                        onClick={() => startRequest(store.storeUid)}
-                                        disabled={loading}
-                                        className="w-full flex items-center justify-between p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold transition-all shadow-md group/btn mb-1"
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <FiPlayCircle className="text-xl" /> Upload Menu Image
-                                        </span>
-                                        <FiChevronRight className="group-hover/btn:translate-x-1 transition-transform" />
-                                    </button>
-                                    <p className="text-[11px] text-gray-400 font-medium px-1 leading-tight">
-                                        Upload your menu photo and we will automatically create your digital menu.
+                            {/* Action List */}
+                            <div className="space-y-4 relative">
+                                <button
+                                    onClick={async () => {
+                                        setSelectedOutletUid(outlet.storeUid);
+                                        try {
+                                            const res = await api.post(`/outlets/${outlet.storeUid}/requests`);
+                                            if (res.data.requestId) {
+                                                localStorage.setItem("requestId", res.data.requestId);
+                                                navigate("/menu-upload");
+                                            } else {
+                                                toast.error("Failed to start process");
+                                            }
+                                        } catch (error) {
+                                            console.error("Request creation failed", error);
+                                            toast.error("Process initialization failed");
+                                        }
+                                    }}
+                                    className="w-full flex flex-col items-start p-5 bg-blue-50/50 hover:bg-blue-600 hover:text-white border border-blue-100/50 rounded-[1.5rem] transition-all duration-300 group/row text-left shadow-sm hover:shadow-blue-200"
+                                >
+                                    <div className="flex items-center gap-4 w-full">
+                                        <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-md group-hover/row:bg-white group-hover/row:text-blue-600 transition-colors">
+                                            <FiPlus size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-blue-900 group-hover/row:text-white text-base transition-colors">Upload Menu Image</span>
+                                                <FiArrowRight className="text-blue-400 group-hover/row:text-white group-hover/row:translate-x-1 transition-all" />
+                                            </div>
+                                            <p className="text-xs text-blue-700/70 group-hover/row:text-blue-100 font-medium mt-0.5 transition-colors">
+                                                Upload your menu photo and we'll automatically create your digital menu
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setSelectedOutletUid(outlet.storeUid);
+                                        navigate(`/manage-menu/${outlet.storeUid}`);
+                                    }}
+                                    className="w-full flex flex-col items-start p-5 hover:bg-gray-900 hover:text-white border border-gray-100 rounded-[1.5rem] transition-all duration-300 group/row text-left shadow-sm hover:shadow-xl"
+                                >
+                                    <div className="flex items-center gap-4 w-full">
+                                        <div className="p-2.5 bg-gray-100 text-gray-600 rounded-xl group-hover/row:bg-gray-800 group-hover/row:text-white transition-colors">
+                                            <FiSave size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 group-hover/row:text-white text-base transition-colors">Add, Update or remove items from your menu</span>
+                                                <FiArrowRight className="text-gray-400 group-hover/row:text-white group-hover/row:translate-x-1 transition-all" />
+                                            </div>
+                                            <p className="text-xs text-gray-500 group-hover/row:text-gray-400 font-medium mt-0.5 transition-colors">
+                                                Edit Prices & Images
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => setQrModalOutlet(outlet)}
+                                    className="w-full flex flex-col items-start p-5 hover:bg-gray-50 border border-gray-100 rounded-[1.5rem] transition-all duration-300 group/row text-left shadow-sm hover:border-indigo-200"
+                                >
+                                    <div className="flex items-center gap-4 w-full">
+                                        <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover/row:bg-indigo-600 group-hover/row:text-white transition-colors">
+                                            <FiDownload size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 text-base transition-colors">QR Menu</span>
+                                                <FiArrowRight className="text-gray-400 group-hover/row:translate-x-1 transition-all" />
+                                            </div>
+                                            <p className="text-xs text-gray-500 font-medium mt-0.5 transition-colors">
+                                                Download QR Code
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => toggleAnalytics(outlet)}
+                                    className="w-full flex flex-col items-start p-5 hover:bg-indigo-50 border border-gray-100 rounded-[1.5rem] transition-all duration-300 group/row text-left shadow-sm hover:border-indigo-200"
+                                >
+                                    <div className="flex items-center gap-4 w-full">
+                                        <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover/row:bg-indigo-600 group-hover/row:text-white transition-colors">
+                                            <FiRefreshCw size={20} className={loadingAnalytics[outlet.storeUid] ? 'animate-spin' : ''} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 text-base transition-colors">Scan Analytics</span>
+                                                <FiArrowRight className="text-gray-400 group-hover/row:translate-x-1 transition-all" />
+                                            </div>
+                                            <p className="text-xs text-gray-500 font-medium mt-0.5 transition-colors">
+                                                View engagement trends
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => window.open(`/${outlet.storeUid}/${outlet.storeName.replace(/\s+/g, '-')}`, '_blank')}
+                                    className="w-full flex flex-col items-start p-5 hover:bg-gray-50 border border-gray-100 rounded-[1.5rem] transition-all duration-300 group/row text-left shadow-sm hover:border-blue-200"
+                                >
+                                    <div className="flex items-center gap-4 w-full">
+                                        <div className="p-2.5 bg-gray-100 text-gray-600 rounded-xl group-hover/row:bg-blue-50 group-hover/row:text-blue-600 transition-colors">
+                                            <FiArrowRight size={20} className="rotate-[-45deg]" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 text-base transition-colors">View Live Menu</span>
+                                                <FiArrowRight className="text-gray-400 group-hover/row:translate-x-1 transition-all" />
+                                            </div>
+                                            <p className="text-xs text-gray-500 font-medium mt-0.5 transition-colors">
+                                                View Website Link
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Empty State */}
+                {outlets.length === 0 && !loadingOutlets && (
+                    <div className="bg-white p-16 rounded-[4rem] shadow-xl text-center border border-gray-100 mt-8 animate-in zoom-in-95 duration-500">
+                        <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-8 border-4 border-white shadow-lg">
+                            <FiPlus className="text-4xl text-blue-600" />
+                        </div>
+                        <h2 className="text-3xl font-black text-gray-900 mb-4 tracking-tight">No outlets found</h2>
+                        <p className="text-gray-500 mb-10 max-w-md mx-auto text-lg font-medium leading-relaxed">It looks like you haven't added any outlets yet. Get started by creating your first business location.</p>
+                        <button
+                            onClick={() => navigate("/outlet-setup")}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-3xl font-bold text-lg transition-all shadow-xl shadow-blue-200 active:scale-95"
+                        >
+                            Create Your First Outlet
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Pagination Footer */}
+            {totalPages > 1 && (
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 bg-white/40 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/60 shadow-sm">
+                    <div className="text-sm text-gray-500 font-bold tracking-tight px-4">
+                        Showing <span className="text-blue-600">{(currentPage - 1) * limit + 1}</span> - <span className="text-blue-600">{Math.min(currentPage * limit, totalOutlets)}</span> of <span className="text-gray-900">{totalOutlets}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1 || loadingOutlets}
+                            className="px-6 py-3 rounded-2xl bg-white border border-gray-100 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                        >
+                            Prev
+                        </button>
+                        
+                        <div className="flex items-center gap-2 px-6 py-3 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                            <span className="text-sm font-black text-blue-600">{currentPage}</span>
+                            <span className="text-xs font-bold text-gray-300">/</span>
+                            <span className="text-sm font-bold text-gray-400">{totalPages}</span>
+                        </div>
+                        
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages || loadingOutlets}
+                            className="px-6 py-3 rounded-2xl bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-200"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* QR Modal */}
+            {qrModalOutlet && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] p-6 sm:p-10 max-w-sm w-full shadow-2xl relative animate-in zoom-in-95 duration-300">
+                        <button 
+                            onClick={() => setQrModalOutlet(null)}
+                            className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-900"
+                        >
+                            <FiX size={24} />
+                        </button>
+                        
+                        <div className="text-center space-y-6">
+                            <div className="space-y-2">
+                                <h3 className="text-2xl font-black text-gray-900 tracking-tight">{qrModalOutlet.storeName}</h3>
+                                <p className="text-sm text-gray-500 font-medium">Scan QR to view menu online</p>
+                            </div>
+                            
+                            <div className="p-6 bg-gray-50 rounded-[2.5rem] border border-gray-100 flex items-center justify-center">
+                                <QRCodeCanvas
+                                    id="qr-gen"
+                                    value={`${window.location.origin}/${qrModalOutlet.storeUid}/${qrModalOutlet.storeName.replace(/\s+/g, '-')}`}
+                                    size={256}
+                                    level="H"
+                                    includeMargin={true}
+                                    className="rounded-2xl shadow-sm"
+                                />
+                            </div>
+                            
+                            <button
+                                onClick={() => downloadQRCode(qrModalOutlet.storeName)}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-5 rounded-3xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-indigo-100 active:scale-95"
+                            >
+                                <FiDownload size={20} /> Download QR Code
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {analyticsOutlet && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] sm:rounded-[3rem] p-6 sm:p-10 max-w-lg w-full shadow-2xl relative animate-in zoom-in-95 duration-300">
+                        <button 
+                            onClick={() => setAnalyticsOutlet(null)}
+                            className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-900"
+                        >
+                            <FiX size={24} />
+                        </button>
+                        
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-5">
+                                <div className="p-4 bg-indigo-600 text-white rounded-[1.5rem] shadow-lg shadow-indigo-100">
+                                    <FiRefreshCw size={24} className={loadingAnalytics[analyticsOutlet.storeUid] ? 'animate-spin' : ''} />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="text-2xl font-black text-gray-900 tracking-tight">{analyticsOutlet.storeName}</h3>
+                                    <p className="text-sm text-gray-500 font-medium tracking-tight">Scan Engagement (Last 7 Days)</p>
+                                </div>
+                            </div>
+                            
+                            <div className="h-64 pt-4 bg-slate-50/50 rounded-[2.5rem] border border-gray-100 p-6 relative overflow-hidden group">
+                                <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/20 to-transparent pointer-events-none" />
+                                {loadingAnalytics[analyticsOutlet.storeUid] ? (
+                                    <div className="h-full flex flex-col items-center justify-center gap-3">
+                                        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span className="text-xs font-bold text-indigo-600 animate-pulse">Fetching trends...</span>
+                                    </div>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={analyticsData[analyticsOutlet.storeUid] || []}>
+                                            <defs>
+                                                <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
+                                                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                            <XAxis 
+                                                dataKey="date" 
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                                dy={10}
+                                                tickFormatter={(str) => {
+                                                    const date = new Date(str);
+                                                    return date.toLocaleDateString('en-US', { weekday: 'narrow' }).toUpperCase();
+                                                }}
+                                            />
+                                            <YAxis 
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                                width={25}
+                                            />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: '#1e293b', 
+                                                    border: 'none', 
+                                                    borderRadius: '16px',
+                                                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                                                    padding: '12px 16px'
+                                                }}
+                                                itemStyle={{ color: '#fff', fontSize: '14px', fontWeight: '800' }}
+                                                labelStyle={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', marginBottom: '4px' }}
+                                                cursor={{ stroke: '#4f46e5', strokeWidth: 2, strokeDasharray: '5 5' }}
+                                            />
+                                            <Area 
+                                                type="monotone" 
+                                                dataKey="count" 
+                                                stroke="#4f46e5" 
+                                                strokeWidth={4}
+                                                fillOpacity={1} 
+                                                fill="url(#colorCount)" 
+                                                animationDuration={1500}
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-6 bg-indigo-50/50 rounded-[2.5rem] border border-indigo-100">
+                                <div className="space-y-1">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Total Scans</span>
+                                    <p className="text-3xl font-black text-indigo-700">
+                                        {(analyticsData[analyticsOutlet.storeUid] || []).reduce((acc, curr) => acc + curr.count, 0)}
                                     </p>
                                 </div>
-
-                                <div>
-                                    <a
-                                        href={`/${store.storeUid}/${store.storeName}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="w-full flex items-center justify-between p-4 bg-white hover:bg-slate-50 text-gray-500 hover:text-indigo-600 rounded-2xl font-bold border border-gray-200 transition-all group/link mb-1"
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <FiExternalLink /> view live menu
-                                        </span>
-                                        <FiChevronRight className="transform group-hover/link:translate-x-1 transition-transform opacity-0 group-hover/link:opacity-100" />
-                                    </a>
-                                    <p className="text-[11px] text-gray-400 font-medium px-1 leading-tight">
-                                        See your digital menu as customers will see it
+                                <div className="h-12 w-px bg-indigo-100 mx-4" />
+                                <div className="space-y-1 text-right">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Peak Volume</span>
+                                    <p className="text-3xl font-black text-indigo-700">
+                                        {Math.max(...(analyticsData[analyticsOutlet.storeUid] || [ {count: 0} ]).map(d => d.count))}
                                     </p>
                                 </div>
                             </div>
                         </div>
                     </div>
-                ))}
-            </div>
-            
-            {stores.length === 0 && (
-                <div className="bg-white/80 backdrop-blur-md p-16 rounded-[2.5rem] shadow-xl text-center border border-white">
-                    <h2 className="text-3xl font-extrabold text-gray-900 mb-4">No stores yet</h2>
-                    <p className="text-gray-500 mb-10 max-w-md mx-auto text-lg leading-relaxed">Add your first store to start managing your digital menus and generating AI dish images.</p>
-                    <button
-                        onClick={() => {
-                            setSelectedStoreUid(null);
-                            navigate("/store-setup");
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all shadow-xl active:scale-95"
-                    >
-                        Setup Your First Store
-                    </button>
                 </div>
             )}
         </div>
     );
 
-    const renderBusinessView = () => (
-        <div className="w-full mx-auto py-6 space-y-10 animate-in fade-in duration-500">
-            <button 
-                onClick={() => navigate("/dashboard")}
-                className="flex items-center gap-2 text-gray-500 hover:text-indigo-600 font-bold transition-colors group"
-            >
-                <FiArrowLeft className="group-hover:-translate-x-1 transition-transform" /> Back to Dashboard
-            </button>
-
-            <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-2xl border border-white p-12 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8">
-                    {!isEditingBusiness ? (
-                        <button 
-                            onClick={() => setIsEditingBusiness(true)}
-                            className="p-4 bg-gray-50 hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 rounded-2xl transition-all border border-transparent hover:border-indigo-100 shadow-sm"
-                        >
-                            <FiEdit2 className="text-xl" />
-                        </button>
-                    ) : (
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={() => setIsEditingBusiness(false)}
-                                className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all shadow-sm"
-                            >
-                                <FiX className="text-xl" />
-                            </button>
-                            <button 
-                                onClick={handleUpdateBusiness}
-                                disabled={updateLoading}
-                                className="p-4 bg-green-50 text-green-600 rounded-2xl hover:bg-green-100 transition-all disabled:opacity-50 shadow-sm"
-                            >
-                                {updateLoading ? <div className="w-5 h-5 border-2 border-green-600/30 border-t-green-600 rounded-full animate-spin"></div> : <FiCheck className="text-xl" />}
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex items-center gap-6 mb-12">
-                    <div className="bg-indigo-100 w-20 h-20 rounded-3xl flex items-center justify-center shadow-inner">
-                        <FiUser className="text-3xl text-indigo-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Business Profile</h2>
-                        <p className="text-gray-500 font-medium">Manage your core business identification info.</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Business Name</label>
-                        {isEditingBusiness ? (
-                            <input 
-                                type="text" 
-                                className="w-full p-5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800 transition-all text-lg shadow-inner"
-                                value={businessData.name}
-                                onChange={(e) => setBusinessData({...businessData, name: e.target.value})}
-                            />
-                        ) : (
-                            <div className="flex items-center gap-4 bg-gray-50/50 p-5 rounded-2xl border border-gray-100/50">
-                                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                                <p className="text-2xl font-extrabold text-gray-900">{businessData.name || "N/A"}</p>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Business Type</label>
-                        {isEditingBusiness ? (
-                            <div className="relative">
-                                <select 
-                                    className="w-full p-5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800 transition-all appearance-none cursor-pointer text-lg shadow-inner"
-                                    value={businessData.businessType}
-                                    onChange={(e) => setBusinessData({...businessData, businessType: e.target.value})}
-                                >
-                                    {businessTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                                <FiChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-4 bg-gray-50/50 p-5 rounded-2xl border border-gray-100/50">
-                                <FiTag className="text-indigo-600 text-xl" />
-                                <p className="text-xl font-bold text-gray-800">{businessData.businessType || "N/A"}</p>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Contact Phone</label>
-                        {isEditingBusiness ? (
-                            <input 
-                                type="tel" 
-                                className="w-full p-5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800 transition-all text-lg shadow-inner"
-                                value={businessData.phone}
-                                maxLength={10}
-                                onChange={(e) => setBusinessData({...businessData, phone: e.target.value.replace(/\D/g, "")})}
-                            />
-                        ) : (
-                            <div className="flex items-center gap-4 bg-gray-50/50 p-5 rounded-2xl border border-gray-100/50">
-                                <FiPhone className="text-indigo-600 text-xl" />
-                                <p className="text-xl font-bold text-gray-800">{businessData.phone || "N/A"}</p>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-3 opacity-70">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Account Email</label>
-                        <div className="flex items-center gap-4 p-5">
-                            <FiMail className="text-gray-400 text-xl" />
-                            <p className="text-xl font-bold text-gray-600">{business?.email}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-12 pt-8 border-t border-gray-50 flex items-center justify-between text-gray-400 font-medium">
-                    <p>Account ID: <span className="font-mono text-xs">{business?.businessId}</span></p>
-                    <p>Created: {new Date().toLocaleDateString()}</p>
-                </div>
-            </div>
-        </div>
-    );
-
     return (
-        <div className="h-[calc(100vh-76px)] bg-white p-4 md:p-8 relative overflow-hidden animate-in fade-in duration-700">
-            {/* Background Decorations */}
-                <div className="w-full h-full flex flex-col gap-6 overflow-y-auto scrollbar-hide">
-                    {activeView === "overview" && renderOverview()}
-                    {activeView === "stores" && renderStoresView()}
-                    {activeView === "business" && renderBusinessView()}
-                </div>
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-gray-50 to-white selection:bg-blue-100">
+            <div className="transition-all duration-700 pb-24">
+                {renderOutletsView()}
+            </div>
         </div>
     );
 }

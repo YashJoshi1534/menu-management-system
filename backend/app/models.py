@@ -37,29 +37,31 @@ class ContactDB(ContactBase):
     class Config:
         populate_by_name = True
 
-# --- Store Models ---
-class StoreBase(BaseModel):
-    storeName: str
-    
-class StoreCreate(StoreBase):
-    pass # Logo handled via UploadFile
+# --- Outlet Models ---
+class OutletBase(BaseModel):
+    storeName: str  # DB field kept as storeName for data compatibility
 
-class StoreDB(StoreBase):
+class OutletCreate(OutletBase):
+    pass  # Logo handled via UploadFile
+
+class OutletDB(OutletBase):
     storeUid: str
     contactId: str
     address: str
     city: str
     zipCode: str
-    phone: Optional[str] = None # Keeping for compatibility if needed, but primary phone is in Business
+    phone: Optional[str] = None
     logoUrl: Optional[str] = None
     storeImages: List[str] = []
     currency: str = "₹"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     isActive: bool = True
     isDeleted: bool = False
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
-class StoreUpdate(BaseModel):
+class OutletUpdate(BaseModel):
     storeName: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -67,14 +69,20 @@ class StoreUpdate(BaseModel):
     phone: Optional[str] = None
     isActive: Optional[bool] = None
     currency: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     logoUrl: Optional[str] = None
+
+# Backward-compat aliases (so any remaining code using old names still works during transition)
+StoreDB = OutletDB
+StoreUpdate = OutletUpdate
 
 # --- Request Models ---
 class RequestDB(BaseModel):
     requestId: str
     storeUid: str
     currentStep: int
-    status: str # "in_progress", "completed"
+    status: str  # "in_progress", "completed"
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -93,11 +101,12 @@ class DishDB(BaseModel):
     storeUid: str
     categoryId: Optional[str] = None
     name: str
+    categoryName: Optional[str] = None
     price: Optional[float] = None
     weight: Optional[str] = None
     description: Optional[str] = None
     imageUrl: Optional[str] = None
-    imageStatus: str = "pending" # "pending", "generating", "ready", "failed"
+    imageStatus: str = "pending"  # "pending", "generating", "ready", "failed"
     imageIndex: int
     isPublished: bool = False
     generationCount: int = 0
@@ -108,6 +117,7 @@ class BusinessBase(BaseModel):
     email: EmailStr
     businessType: Optional[str] = None
     phone: Optional[str] = None
+    logoUrl: Optional[str] = None
 
 class BusinessCreate(BusinessBase):
     pass
@@ -115,6 +125,7 @@ class BusinessCreate(BusinessBase):
 class BusinessDB(BusinessBase):
     businessId: str
     storeUids: List[str] = []
+    refreshToken: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 

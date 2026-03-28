@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List
-from app.database import requests_collection, dishes_collection, store_profiles_collection, categories_collection
+from app.database import requests_collection, dishes_collection, outlet_profiles_collection, categories_collection
 from app.models import RequestDB, DishDB, CategoryDB
 from app.services.gemini_service import extract_menu_data
 from app.logger import get_logger
@@ -12,12 +12,12 @@ import shutil
 
 router = APIRouter(tags=["Requests"])
 
-@router.post("/stores/{store_uid}/requests", response_model=dict)
+@router.post("/outlets/{store_uid}/requests", response_model=dict)
 async def create_request(store_uid: str):
-    # Verify store exists
-    store = await store_profiles_collection.find_one({"storeUid": store_uid})
+    # Verify outlet exists
+    store = await outlet_profiles_collection.find_one({"storeUid": store_uid})
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="Outlet not found")
 
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     
@@ -104,7 +104,7 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
 
     return {"currentStep": 2, "totalDishes": len(extracted_dishes)}
 
-@router.get("/stores/{store_uid}/requests/active", response_model=dict)
+@router.get("/outlets/{store_uid}/requests/active", response_model=dict)
 async def get_active_request(store_uid: str):
     req = await requests_collection.find_one(
         {"storeUid": store_uid, "status": "in_progress"},

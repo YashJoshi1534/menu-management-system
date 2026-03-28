@@ -1,10 +1,11 @@
-import type { Dish } from "../Pages/StorePage";
+import type { Dish } from "../Pages/OutletPage";
 
 interface Props {
   dish: Dish;
+  currency?: string;
 }
 
-export default function DishCard({ dish }: Props) {
+export default function DishCard({ dish, currency = "₹" }: Props) {
   return (
     <div className="bg-white rounded-xl shadow p-4">
       <div className="h-40 w-full bg-gray-200 rounded mb-3 overflow-hidden">
@@ -19,8 +20,8 @@ export default function DishCard({ dish }: Props) {
             {dish.imageStatus === "generating"
               ? "Generating image..."
               : dish.imageStatus === "failed"
-              ? "Image unavailable"
-              : "Image pending"}
+                ? "Image unavailable"
+                : "Image pending"}
           </div>
         )}
       </div>
@@ -28,7 +29,7 @@ export default function DishCard({ dish }: Props) {
       <h3 className="font-semibold text-lg">{dish.name}</h3>
 
       {dish.price && (
-        <p className="text-sm text-gray-600">₹{dish.price}</p>
+        <p className="text-sm text-gray-600">{currency}{dish.price}</p>
       )}
     </div>
   );
