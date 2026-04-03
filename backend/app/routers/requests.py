@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List
-from app.database import requests_collection, dishes_collection, outlet_profiles_collection, categories_collection
-from app.models import RequestDB, DishDB, CategoryDB
+from app.database import requests_collection, dishes_collection, outlet_profiles_collection, categories_collection, admin_config_collection, business_config_collection
+from app.models import RequestDB, DishDB, CategoryDB, AdminConfigDB
 from app.services.gemini_service import extract_menu_data
 from app.logger import get_logger
 import uuid
@@ -18,6 +18,27 @@ async def create_request(store_uid: str):
     store = await outlet_profiles_collection.find_one({"storeUid": store_uid})
     if not store:
         raise HTTPException(status_code=404, detail="Outlet not found")
+
+    # Fetch configuration
+    business_id = store.get("contactId")
+    config_dict = await business_config_collection.find_one({"businessId": business_id})
+    if not config_dict:
+        config_dict = await admin_config_collection.find_one({})
+        if not config_dict:
+            config_dict = AdminConfigDB().dict()
+    config = AdminConfigDB(**config_dict)
+    
+    # Check concurrent process limit for this store
+    active_requests_count = await requests_collection.count_documents({
+        "storeUid": store_uid, 
+        "status": "in_progress"
+    })
+    
+    if active_requests_count >= config.processCreationLimit:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Maximum limit of {config.processCreationLimit} active menu generation processes reached for this outlet."
+        )
 
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     
@@ -38,6 +59,22 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
     req = await requests_collection.find_one({"requestId": request_id})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    # Fetch configuration
+    store = await outlet_profiles_collection.find_one({"storeUid": req["storeUid"]})
+    business_id = store.get("contactId")
+    config_dict = await business_config_collection.find_one({"businessId": business_id})
+    if not config_dict:
+        config_dict = await admin_config_collection.find_one({})
+        if not config_dict:
+            config_dict = AdminConfigDB().dict()
+    config = AdminConfigDB(**config_dict)
+    
+    if len(images) > config.maxImagesPerUpload:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Maximum {config.maxImagesPerUpload} images allowed per upload."
+        )
 
     UPLOAD_DIR = f"uploads/{request_id}"
     os.makedirs(UPLOAD_DIR, exist_ok=True)

@@ -15,7 +15,16 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState<"email" | "details">("email");
     const [isNewAccount, setIsNewAccount] = useState<boolean | null>(null);
+    const [showSessionModal, setShowSessionModal] = useState(false);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const expired = localStorage.getItem("session_expired");
+        if (expired === "true") {
+            setShowSessionModal(true);
+            localStorage.removeItem("session_expired");
+        }
+    }, []);
 
     useEffect(() => {
         const fetchConfig = async () => {
@@ -94,7 +103,7 @@ export default function Login() {
                         email,
                         name,
                         businessType,
-                        phone,
+                        phone: `+91${phone}`,
                         logoData,
                         isNewAccount: true,
                     }
@@ -180,16 +189,21 @@ export default function Login() {
                                 </div>
 
                                 <div className="relative group">
-                                    <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-                                    <input
-                                        type="tel"
-                                        placeholder="Phone Number (10 digits)"
-                                        required
-                                        maxLength={10}
-                                        value={phone}
-                                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                                        className="w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
-                                    />
+                                    <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors z-10" />
+                                    <div className="flex items-center">
+                                        <div className="pl-12 pr-2 py-4 bg-gray-50 border border-gray-200 border-r-0 rounded-l-2xl font-black text-blue-600 text-sm">
+                                            +91
+                                        </div>
+                                        <input
+                                            type="tel"
+                                            placeholder="Phone Number (10 digits)"
+                                            required
+                                            maxLength={10}
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                                            className="flex-1 p-4 bg-gray-50 border border-gray-200 border-l-0 rounded-r-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="relative group flex flex-col gap-2">
@@ -241,6 +255,27 @@ export default function Login() {
                     By continuing, you agree to our <a href="/terms" className="text-blue-500 hover:underline">Terms of Service</a> & <a href="/privacy" className="text-blue-500 hover:underline">Privacy</a>.
                 </p>
             </div>
+
+            {/* Session Expired Modal */}
+            {showSessionModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] p-10 max-w-sm w-full shadow-2xl relative animate-in zoom-in-95 duration-300 border-t-8 border-amber-500">
+                        <div className="text-center space-y-6">
+                            <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                                <FiTag className="text-4xl text-amber-500" />
+                            </div>
+                            <h3 className="text-3xl font-[1000] text-gray-900 tracking-tighter leading-none">Session Expired</h3>
+                            <p className="text-gray-500 font-medium font-bold">Your session has timed out for security. Please login again to continue.</p>
+                            <button
+                                onClick={() => setShowSessionModal(false)}
+                                className="w-full bg-gray-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95 shadow-xl shadow-gray-200"
+                            >
+                                GOT IT
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

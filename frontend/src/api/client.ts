@@ -2,7 +2,7 @@ import axios from "axios";
 import { getCookie, setCookie, removeCookie } from "../utils/cookies";
 
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8005",
+  baseURL: "http://127.0.0.1:8000",
   headers: {
     "Content-Type": "application/json",
   },
@@ -43,14 +43,14 @@ api.interceptors.response.use(
           // Save new tokens
           setCookie("accessToken", accessToken);
           setCookie("refreshToken", newRefreshToken);
-          
+
           // Update business info in cookie if stored as JSON (optional but good for consistency)
           const businessStr = getCookie("business");
           if (businessStr) {
-              const business = JSON.parse(businessStr);
-              business.accessToken = accessToken;
-              business.refreshToken = newRefreshToken;
-              setCookie("business", JSON.stringify(business));
+            const business = JSON.parse(businessStr);
+            business.accessToken = accessToken;
+            business.refreshToken = newRefreshToken;
+            setCookie("business", JSON.stringify(business));
           }
 
           // Retry original request
@@ -58,21 +58,23 @@ api.interceptors.response.use(
           return api(originalRequest);
         } catch (refreshError) {
           // Refresh failed, logout
+          localStorage.setItem("session_expired", "true");
           removeCookie("business");
           removeCookie("outletUid");
           removeCookie("accessToken");
           removeCookie("refreshToken");
-          localStorage.clear();
+          localStorage.removeItem("business");
           window.location.href = "/";
           return Promise.reject(refreshError);
         }
       } else {
-        // No refresh token, logout
+        // No refresh token, logout 
+        localStorage.setItem("session_expired", "true");
         removeCookie("business");
         removeCookie("outletUid");
         removeCookie("accessToken");
         removeCookie("refreshToken");
-        localStorage.clear();
+        localStorage.removeItem("business");
         window.location.href = "/";
       }
     }

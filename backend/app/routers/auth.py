@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Body
-from app.models import BusinessDB, OTPRecord, BusinessCreate, AdminConfigDB
-from app.database import businesses_collection, otps_collection, outlet_profiles_collection, admin_config_collection
+from app.models import BusinessDB, OTPRecord, BusinessCreate, AdminConfigDB, BusinessUpdate, BusinessConfigDB
+from app.database import businesses_collection, otps_collection, outlet_profiles_collection, admin_config_collection, business_config_collection
 from app.services.email_service import send_otp_email
 from app.services.cloudinary_service import upload_image
 from app.services.auth_service import create_access_token, create_refresh_token, verify_token
@@ -20,18 +20,29 @@ async def check_email(email: str = Body(..., embed=True)):
             "business": {
                 "businessId": business["businessId"],
                 "name": business["name"],
-                "email": business["email"]
+                "email": business["email"],
+                "logoUrl": business.get("logoUrl"),
+                "businessType": business.get("businessType"),
+                "phone": business.get("phone"),
+                "contactName": business.get("contactName")
             }
         }
     return {"exists": False}
 
 @router.get("/config")
-async def get_config():
-    config = await admin_config_collection.find_one({})
+async def get_config(businessId: Optional[str] = None):
+    # Try fetching business-specific config if businessId is provided
+    config = None
+    if businessId:
+        config = await business_config_collection.find_one({"businessId": businessId})
+    
+    # Fallback to global admin config if no business config found or provided
     if not config:
-        config_obj = AdminConfigDB()
-        config = config_obj.dict()
-        await admin_config_collection.insert_one(config)
+        config = await admin_config_collection.find_one({})
+        if not config:
+            config_obj = AdminConfigDB()
+            config = config_obj.dict()
+            await admin_config_collection.insert_one(config)
     
     config.pop("_id", None)
     return config
@@ -39,10 +50,17 @@ async def get_config():
 @router.post("/send-otp")
 async def send_otp(email: str = Body(..., embed=True), name: Optional[str] = Body(None, embed=True)):
     # 1. Get Config
-    config_dict = await admin_config_collection.find_one({})
+    business = await businesses_collection.find_one({"email": email})
+    config_dict = None
+    if business:
+        config_dict = await business_config_collection.find_one({"businessId": business["businessId"]})
+    
     if not config_dict:
-        config_dict = AdminConfigDB().dict()
-        await admin_config_collection.insert_one(config_dict)
+        config_dict = await admin_config_collection.find_one({})
+        if not config_dict:
+            config_dict = AdminConfigDB().dict()
+            await admin_config_collection.insert_one(config_dict)
+            
     config = AdminConfigDB(**config_dict)
     
     # 2. Check existing OTP record for rate limiting
@@ -91,11 +109,12 @@ async def send_otp(email: str = Body(..., embed=True), name: Optional[str] = Bod
 
 @router.post("/verify-otp")
 async def verify_otp(
-    email: str = Body(..., embed=True), 
+    email: str = Body(..., embed=True),
     otp: str = Body(..., embed=True),
     name: Optional[str] = Body(None, embed=True),
     businessType: Optional[str] = Body(None, embed=True),
     phone: Optional[str] = Body(None, embed=True),
+    contactName: Optional[str] = Body(None, embed=True),
     logoData: Optional[str] = Body(None, embed=True)
 ):
     # 1. Reset requestCount to zero and clear OTP
@@ -126,6 +145,7 @@ async def verify_otp(
             email=email,
             businessType=businessType,
             phone=phone,
+            contactName=contactName or name, # Use business name as fallback for contactName
             logoUrl=logo_url
         )
         await businesses_collection.insert_one(new_business.dict())
@@ -142,10 +162,32 @@ async def verify_otp(
         {"$set": {"refreshToken": refresh_token}}
     )
     
+    # 5. Initialize Business Configuration if not exists
+    biz_config = await business_config_collection.find_one({"businessId": business["businessId"]})
+    if not biz_config:
+        # Fetch current admin config
+        admin_config_dict = await admin_config_collection.find_one({})
+        if not admin_config_dict:
+            admin_config_dict = AdminConfigDB().dict()
+            await admin_config_collection.insert_one(admin_config_dict)
+        
+        # Create business-specific config
+        new_biz_config = BusinessConfigDB(
+            **admin_config_dict,
+            businessId=business["businessId"]
+        )
+        # Remove _id if it exists in admin_config_dict to avoid conflict
+        config_to_insert = new_biz_config.dict()
+        await business_config_collection.insert_one(config_to_insert)
+    
     return {
         "businessId": business["businessId"],
         "name": business["name"],
         "email": business["email"],
+        "logoUrl": business.get("logoUrl"),
+        "businessType": business.get("businessType"),
+        "phone": business.get("phone"),
+        "contactName": business.get("contactName"),
         "accessToken": access_token,
         "refreshToken": refresh_token,
         "message": "Login successful"
@@ -197,24 +239,37 @@ async def get_me(business_id: str):
 @router.put("/me/{business_id}")
 async def update_business(
     business_id: str,
-    name: Optional[str] = Body(None, embed=True),
-    businessType: Optional[str] = Body(None, embed=True),
-    phone: Optional[str] = Body(None, embed=True)
+    update: BusinessUpdate
 ):
-    update_data = {}
-    if name is not None: update_data["name"] = name
-    if businessType is not None: update_data["businessType"] = businessType
-    if phone is not None: update_data["phone"] = phone
+    update_dict = update.dict(exclude_unset=True)
     
-    if not update_data:
+    # Handle Logo Upload if present
+    if "logoData" in update_dict:
+        logo_data = update_dict.pop("logoData")
+        if logo_data:
+            try:
+                logo_url = upload_image(logo_data, "business_logos", f"{business_id}_logo")
+                update_dict["logoUrl"] = logo_url
+            except Exception as e:
+                print(f"Failed to upload business logo: {e}")
+        else:
+            # If logoData is explicitly null/empty, remove the logo
+            update_dict["logoUrl"] = None
+
+    if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
         
-    result = await businesses_collection.update_one(
+    await businesses_collection.update_one(
         {"businessId": business_id},
-        {"$set": update_data}
+        {"$set": update_dict}
     )
     
-    if result.matched_count == 0:
+    # Return updated business
+    updated_business = await businesses_collection.find_one({"businessId": business_id}, {"_id": 0})
+    if not updated_business:
         raise HTTPException(status_code=404, detail="Business not found")
         
-    return {"message": "Business updated successfully"}
+    return {
+        "message": "Business updated successfully",
+        "business": updated_business
+    }

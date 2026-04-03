@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { FiSave, FiRefreshCw, FiArrowLeft, FiCamera, FiArrowRight, FiPlus, FiEdit2, FiTrash2, FiSearch, FiUpload } from "react-icons/fi";
 import toast from "react-hot-toast";
+import Breadcrumb from "../components/Breadcrumb";
 
 interface Dish {
     dishId: string;
@@ -90,6 +91,8 @@ export default function ManageMenu() {
         id: string,
         name: string
     } | null>(null);
+
+    const [draggingOverDishId, setDraggingOverDishId] = useState<string | null>(null);
 
     useEffect(() => {
         if (outletUid) {
@@ -378,6 +381,26 @@ export default function ManageMenu() {
     };
 
 
+    const handleDishDragOver = (e: React.DragEvent, dishId: string) => {
+        e.preventDefault();
+        setDraggingOverDishId(dishId);
+    };
+
+    const handleDishDragLeave = () => {
+        setDraggingOverDishId(null);
+    };
+
+    const handleDishDrop = (e: React.DragEvent, dishId: string) => {
+        e.preventDefault();
+        setDraggingOverDishId(null);
+        const file = e.dataTransfer.files?.[0];
+        if (file && file.type.startsWith("image/")) {
+            handleManualImageUpload(dishId, file);
+        } else if (file) {
+            toast.error("Please drop an image file.");
+        }
+    };
+
     const renderCategoryModal = () => (
         <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${isCategoryModalOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)}></div>
@@ -612,7 +635,12 @@ export default function ManageMenu() {
                         >
                             {/* Image Section */}
                             <div className="w-full lg:w-[40%] flex flex-col gap-4">
-                                <div className="w-full aspect-[4/3] sm:aspect-video lg:aspect-square bg-slate-950 rounded-[2rem] overflow-hidden relative group/img shadow-2xl border-4 border-white">
+                                <div 
+                                    onDragOver={(e) => handleDishDragOver(e, dish.dishId)}
+                                    onDragLeave={handleDishDragLeave}
+                                    onDrop={(e) => handleDishDrop(e, dish.dishId)}
+                                    className={`w-full aspect-[4/3] sm:aspect-video lg:aspect-square bg-slate-950 rounded-[2rem] overflow-hidden relative group/img shadow-2xl border-4 transition-all duration-300 ${draggingOverDishId === dish.dishId ? 'border-indigo-500 scale-[1.05] ring-4 ring-indigo-200' : 'border-white'}`}
+                                >
                                     <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
                                     
                                     {dish.imageUrl ? (
@@ -621,6 +649,14 @@ export default function ManageMenu() {
                                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 z-10">
                                             <FiCamera size={48} className="mb-4 opacity-20" />
                                             <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">No Visualized Image</span>
+                                        </div>
+                                    )}
+
+                                    {/* Drop Overlay */}
+                                    {draggingOverDishId === dish.dishId && (
+                                        <div className="absolute inset-0 bg-indigo-600/60 backdrop-blur-md flex flex-col items-center justify-center text-white z-40 animate-in fade-in duration-200">
+                                            <FiUpload className="text-4xl mb-2" />
+                                            <span className="font-black tracking-[0.2em] text-[10px] uppercase">Drop to Upload</span>
                                         </div>
                                     )}
 
@@ -798,29 +834,23 @@ export default function ManageMenu() {
                 <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-100/40 blur-3xl"></div>
             </div>
 
-            {/* Header / Breadcrumbs */}
-            <div className="relative z-30 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between pointer-events-none">
-                <div className="flex items-center gap-2 md:gap-3 bg-white/90 backdrop-blur-xl shadow-lg border border-white/50 p-2 md:p-3 px-6 md:px-8 rounded-full pointer-events-auto max-w-[98vw]">
-                    <div className="flex items-center gap-2 overflow-hidden text-[10px] md:text-sm font-bold tracking-tight">
-                        <span className="text-slate-400 hover:text-indigo-600 cursor-pointer transition-colors shrink-0" onClick={() => navigate('/dashboard')}>Dashboard</span>
-                        <span className="text-slate-300 shrink-0">/</span>
-                        <span 
-                            className={`${viewMode === 'dishes' ? 'text-slate-400 hover:text-indigo-600 cursor-pointer transition-colors' : 'text-slate-900'} shrink-0`}
-                            onClick={() => { if (viewMode === 'dishes') navigate(`/manage-menu/${outletUid}`); }}
-                        >
-                            Menu
-                        </span>
-                        {viewMode === 'dishes' && (
-                            <>
-                                <span className="text-slate-300 shrink-0">/</span>
-                                <span className="text-slate-900 truncate">
-                                    {categories.find(c => c.categoryId === selectedCategoryId)?.categoryName || 'Dishes'}
-                                </span>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <div />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+                <Breadcrumb 
+                    items={
+                        viewMode === 'dishes' 
+                        ? [
+                            { label: 'Business Profile', path: '/configure-outlets' },
+                            { label: 'Manage Outlets', path: '/view-outlets' },
+                            { label: outlet?.outletName || 'Menu', path: `/manage-menu/${outletUid}` },
+                            { label: categories.find(c => c.categoryId === selectedCategoryId)?.categoryName || 'Dishes' }
+                        ]
+                        : [
+                            { label: 'Business Profile', path: '/configure-outlets' },
+                            { label: 'Manage Outlets', path: '/view-outlets' },
+                            { label: outlet?.outletName || 'Menu' }
+                        ]
+                    } 
+                />
             </div>
 
             {/* Main Content Area */}

@@ -24,8 +24,8 @@ export default function DishGeneration() {
     const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
-    const [generateAllProgress, setGenerateAllProgress] = useState(0);
-    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+    // const [generateAllProgress, setGenerateAllProgress] = useState(0);
+    // const [isGeneratingAll, setIsGeneratingAll] = useState(false);
     const [generationLimit, setGenerationLimit] = useState(1);
     const [outletCurrency, setOutletCurrency] = useState("₹");
     const navigate = useNavigate();
@@ -99,32 +99,32 @@ export default function DishGeneration() {
         }
     };
 
-    const handleGenerateAll = async () => {
-        if (!requestId) return;
-        setIsGeneratingAll(true);
-        setGenerateAllProgress(0);
+    // const handleGenerateAll = async () => {
+    //     if (!requestId) return;
+    //     setIsGeneratingAll(true);
+    //     setGenerateAllProgress(0);
 
-        try {
-            let generatedCount = 0;
-            for (let p = 1; p <= totalPages; p++) {
-                const pRes = await api.get(`/requests/${requestId}/dishes?page=${p}&limit=1`);
-                const d = pRes.data.dish;
-                const limit = pRes.data.generationLimit || 1;
+    //     try {
+    //         let generatedCount = 0;
+    //         for (let p = 1; p <= totalPages; p++) {
+    //             const pRes = await api.get(`/requests/${requestId}/dishes?page=${p}&limit=1`);
+    //             const d = pRes.data.dish;
+    //             const limit = pRes.data.generationLimit || 1;
 
-                if (d && d.imageStatus !== 'ready' && (d.generationCount || 0) < limit) {
-                    await api.post(`/requests/${requestId}/generate-image/${d.dishId}`);
-                }
-                generatedCount++;
-                setGenerateAllProgress(Math.round((generatedCount / totalPages) * 100));
-            }
-            toast.success("All Images Generated!");
-            fetchDish(requestId, page);
-        } catch (e) {
-            toast.error("Bulk generation stopped");
-        } finally {
-            setIsGeneratingAll(false);
-        }
-    };
+    //             if (d && d.imageStatus !== 'ready' && (d.generationCount || 0) < limit) {
+    //                 await api.post(`/requests/${requestId}/generate-image/${d.dishId}`);
+    //             }
+    //             generatedCount++;
+    //             setGenerateAllProgress(Math.round((generatedCount / totalPages) * 100));
+    //         }
+    //         toast.success("All Images Generated!");
+    //         fetchDish(requestId, page);
+    //     } catch (e) {
+    //         toast.error("Bulk generation stopped");
+    //     } finally {
+    //         setIsGeneratingAll(false);
+    //     }
+    // };
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showResetModal, setShowResetModal] = useState(false);
 
@@ -250,15 +250,36 @@ export default function DishGeneration() {
                 <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-500/5 blur-[120px]"></div>
             </div>
 
-            <div className="w-full z-10 flex flex-col gap-6 md:gap-10 pb-12 md:pb-20">
+            <div className="w-full z-10 flex flex-col gap-6 md:gap-14 pb-12 md:pb-20">
                 <ProgressBar currentStep={3} outletName={outletName} />
                 
-                <div className="max-w-6xl mx-auto w-full px-4 md:px-8">
-                    <div className="flex flex-col lg:flex-row gap-8 items-start">
-                        {/* Left: Main Dish Card */}
-                        <div className="flex-1 w-full flex flex-col gap-6">
-                            <div className="w-full bg-white border border-gray-100 rounded-[3.5rem] shadow-sm flex flex-col overflow-hidden transition-all duration-700 hover:shadow-2xl hover:-translate-y-1">
-                                <div className="w-full bg-gray-950 relative flex items-center justify-center min-h-[350px] md:min-h-[500px]">
+                <div className="max-w-7xl mx-auto w-full px-4 md:px-8">
+                    {/* Top Detail: Dishes to Review Counter */}
+                    <div className="flex flex-col items-center mb-6 animate-in fade-in slide-in-from-top-4 duration-700">
+                        <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-7xl font-[1000] text-blue-600 leading-none tracking-tighter">{page}</span>
+                            <span className="text-3xl font-black text-gray-200">/</span>
+                            <span className="text-4xl font-black text-gray-400 tracking-tighter">{totalPages}</span>
+                        </div>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Dishes to Review</span>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-12 relative">
+                        {/* Navigation Row: [Prev] [Image | Details] [Next] */}
+                        <div className="flex flex-col md:flex-row items-center gap-8 w-full">
+                            {/* Navigation: Previous Button (Desktop) */}
+                            <button
+                                onClick={() => fetchDish(requestId!, page - 1)}
+                                disabled={page <= 1}
+                                className="hidden lg:flex w-20 h-20 bg-white border-2 border-gray-100 rounded-[2rem] items-center justify-center transition-all hover:border-blue-500 hover:text-blue-500 disabled:opacity-20 active:scale-90 shadow-xl shadow-gray-200/20 group shrink-0"
+                            >
+                                <FiChevronRight className="rotate-180 text-4xl group-hover:-translate-x-1 transition-transform" />
+                            </button>
+
+                            {/* Main Dish Card: Horizontal Layout */}
+                            <div className="flex-1 w-full bg-white border border-gray-100 rounded-[3.5rem] shadow-sm flex flex-col md:flex-row overflow-hidden transition-all duration-700 hover:shadow-2xl hover:-translate-y-1">
+                                {/* Left Half: AI Image */}
+                                <div className="w-full md:w-1/2 bg-gray-950 relative flex items-center justify-center min-h-[350px] md:min-h-[600px]">
                                     {loading ? (
                                         <div className="flex flex-col items-center gap-4">
                                             <FiLoader className="text-5xl animate-spin text-blue-500" />
@@ -284,16 +305,19 @@ export default function DishGeneration() {
                                     </div>
                                 </div>
 
-                                <div className="w-full p-6 md:p-10 flex flex-col gap-8 md:gap-10 bg-white relative">
+                                {/* Right Half: Editable Details */}
+                                <div className="w-full md:w-1/2 p-8 md:p-14 flex flex-col gap-8 md:gap-12 bg-white relative justify-center">
                                     <div className="space-y-8">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex flex-col gap-4">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex flex-col gap-3">
                                                 {dish?.categoryName && (
-                                                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-5 py-2 rounded-full tracking-[0.3em] uppercase w-fit">{dish.categoryName}</span>
+                                                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-5 py-2.5 rounded-full tracking-[0.15em] uppercase w-fit whitespace-nowrap">
+                                                        {dish.categoryName}
+                                                    </span>
                                                 )}
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-[10px] font-black text-gray-300 tracking-[0.2em] uppercase">Dish Review</span>
-                                                </div>
+                                                <span className="text-[10px] font-black text-gray-300 tracking-[0.25em] uppercase ml-1">
+                                                    Dish Review
+                                                </span>
                                             </div>
                                             <div className="flex gap-3">
                                                 {!isEditing && (
@@ -372,17 +396,17 @@ export default function DishGeneration() {
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="space-y-8 animate-in zoom-in-95 duration-500">
+                                            <div className="space-y-6 animate-in zoom-in-95 duration-500">
                                                 <div className="space-y-3">
-                                                    <h1 className="text-3xl lg:text-5xl font-[1000] text-gray-900 tracking-tighter leading-tight transition-all">{dish?.name || "..." }</h1>
-                                                    <div className="flex gap-4 items-center text-2xl lg:text-4xl text-blue-600 font-[1000] tracking-tighter">
+                                                    <h1 className="text-3xl lg:text-6xl font-[1000] text-gray-900 tracking-tighter leading-tight transition-all">{dish?.name || "..." }</h1>
+                                                    <div className="flex gap-4 items-center text-2xl lg:text-5xl text-blue-600 font-[1000] tracking-tighter">
                                                         <span>{outletCurrency}{dish?.price || "0"}</span>
-                                                        {dish?.weight && <span className="text-gray-300 text-xl font-bold tracking-normal italic ml-2">/ {dish?.weight}</span>}
+                                                        {dish?.weight && <span className="text-gray-300 text-2xl font-bold tracking-normal italic ml-2">/ {dish?.weight}</span>}
                                                     </div>
                                                 </div>
                                                 <div className="relative">
                                                     <div className="absolute left-0 top-0 w-1 h-full bg-blue-50 rounded-full"></div>
-                                                    <p className="pl-6 text-gray-500 text-xl md:text-2xl leading-relaxed font-medium italic opacity-80 decoration-blue-100 decoration-wavy underline-offset-8">"{dish?.description}"</p>
+                                                    <p className="pl-6 text-gray-500 text-xl md:text-2xl leading-relaxed font-medium italic opacity-80">"{dish?.description}"</p>
                                                 </div>
                                             </div>
                                         )}
@@ -392,7 +416,7 @@ export default function DishGeneration() {
                                         {(dish?.generationCount || 0) < generationLimit ? (
                                             <button
                                                 onClick={generateImage}
-                                                disabled={generating || isGeneratingAll}
+                                                disabled={generating}
                                                 className={`w-full py-6 rounded-[2rem] font-[1000] text-xl transition-all shadow-xl active:scale-[0.98] flex items-center justify-center gap-4 ${dish?.imageStatus === 'ready'
                                                     ? 'bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50'
                                                     : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20'
@@ -413,95 +437,65 @@ export default function DishGeneration() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Navigation: Next Button (Desktop) */}
+                            <button
+                                onClick={() => fetchDish(requestId!, page + 1)}
+                                disabled={page >= totalPages}
+                                className="hidden lg:flex w-20 h-20 bg-white border-2 border-gray-100 rounded-[2rem] items-center justify-center transition-all hover:border-blue-500 hover:text-blue-500 disabled:opacity-20 active:scale-90 shadow-xl shadow-gray-200/20 group shrink-0"
+                            >
+                                <FiChevronRight className="text-4xl group-hover:translate-x-1 transition-transform" />
+                            </button>
                         </div>
 
-                        {/* Right Sidebar: Gallery & Controls */}
-                        <div className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
-                            <div className="bg-white border border-gray-100 p-8 rounded-[3rem] flex items-center justify-between shadow-sm">
-                                <div className="flex flex-col">
-                                    <div className="flex items-baseline gap-1">
-                                        <span className="text-5xl font-[1000] text-blue-600 leading-none">{page}</span>
-                                        <span className="text-2xl font-black text-gray-200">/</span>
-                                        <span className="text-2xl font-black text-gray-400">{totalPages}</span>
-                                    </div>
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-3">Dishes to Review</span>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => fetchDish(requestId!, page - 1)}
-                                        disabled={page <= 1}
-                                        className="w-14 h-14 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-2xl flex items-center justify-center transition-all disabled:opacity-20 active:scale-90"
-                                    >
-                                        <FiChevronRight className="rotate-180 text-2xl text-gray-600" />
-                                    </button>
-                                    <button
-                                        onClick={() => fetchDish(requestId!, page + 1)}
-                                        disabled={page >= totalPages}
-                                        className="w-14 h-14 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-2xl flex items-center justify-center transition-all disabled:opacity-20 active:scale-90"
-                                    >
-                                        <FiChevronRight className="text-2xl text-gray-600" />
-                                    </button>
-                                </div>
-                            </div>
+                        {/* Mobile Navigation Controls */}
+                        <div className="flex lg:hidden w-full gap-4 justify-between mt-4">
+                            <button
+                                onClick={() => fetchDish(requestId!, page - 1)}
+                                disabled={page <= 1}
+                                className="flex-1 py-5 bg-white border-2 border-gray-100 rounded-3xl flex items-center justify-center gap-3 font-black text-xs uppercase tracking-widest disabled:opacity-20 active:scale-95 transition-all"
+                            >
+                                <FiChevronRight className="rotate-180 text-xl" /> Previous
+                            </button>
+                            <button
+                                onClick={() => fetchDish(requestId!, page + 1)}
+                                disabled={page >= totalPages}
+                                className="flex-1 py-5 bg-white border-2 border-gray-100 rounded-3xl flex items-center justify-center gap-3 font-black text-xs uppercase tracking-widest disabled:opacity-20 active:scale-95 transition-all"
+                            >
+                                Next <FiChevronRight className="text-xl" />
+                            </button>
+                        </div>
 
-                            <div className="bg-gray-50/70 border border-gray-100 rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-10 space-y-8 md:space-y-10 shadow-inner flex-1">
-                                <div className="space-y-4">
+                        {/* Final Action Row (Moved to Bottom) */}
+                        <div className="w-full max-w-4xl flex flex-col md:flex-row gap-6 mt-16 pb-12 items-stretch animate-in slide-in-from-bottom-10 duration-1000">
+                            <div className="flex-1 bg-gray-50 md:bg-white border border-gray-100 rounded-[3rem] p-8 md:p-12 shadow-sm flex flex-col md:flex-row items-center justify-between gap-10">
+                                <div className="space-y-4 text-center md:text-left">
                                     <h2 className="text-3xl font-[1000] text-gray-900 tracking-tighter leading-none">Extraction Complete</h2>
                                     <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-[0.2em]">Step 3 of 4 • Design System</p>
                                 </div>
 
-                                <div className="space-y-6">
-                                    {isGeneratingAll ? (
-                                        <div className="bg-blue-600 rounded-[2.5rem] p-10 shadow-xl shadow-blue-500/30 animate-in zoom-in-95 duration-500">
-                                            <div className="flex items-center gap-5 mb-8">
-                                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center animate-spin">
-                                                    <FiLoader className="text-2xl text-white" />
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-white font-[1000] text-xl tracking-tight">AI Bulk Generate</span>
-                                                    <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">{generateAllProgress}% Complete</span>
-                                                </div>
-                                            </div>
-                                            <div className="w-full bg-white/20 rounded-full h-4 overflow-hidden shadow-inner">
-                                                <div className="bg-white h-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(255,255,255,0.5)]" style={{ width: `${generateAllProgress}%` }}></div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col gap-5">
-                                            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Actions</h4>
-                                            
-                                            <button
-                                                onClick={handleGenerateAll}
-                                                className="w-full bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50 py-6 rounded-[2.2rem] font-[1000] text-lg active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-3 group"
-                                            >
-                                                GENERATE ALL IMAGE
-                                            </button>
+                                <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                                    <button
+                                        onClick={() => setShowResetModal(true)}
+                                        className="px-10 py-5 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-[2.2rem] font-black text-[10px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all shadow-sm"
+                                    >
+                                        Start New Process
+                                    </button>
 
-                                            <div className="w-full h-px bg-gray-200 my-2"></div>
-
-                                            <button
-                                                onClick={() => setShowResetModal(true)}
-                                                className="w-full bg-white border border-red-100 text-red-500 hover:bg-red-50 py-5 rounded-[2.2rem] font-black text-[10px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all shadow-sm"
-                                            >
-                                                Start New Process
-                                            </button>
-
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        await api.post(`/requests/${requestId}/publish`);
-                                                        navigate("/completion");
-                                                    } catch (e: any) {
-                                                        toast.error("Failed to publish menu");
-                                                    }
-                                                }}
-                                                className="w-full bg-gray-950 hover:bg-black text-white py-8 rounded-[2.5rem] font-[1000] text-2xl flex items-center justify-center gap-4 active:scale-[0.98] shadow-2xl transition-all shadow-gray-900/40 relative overflow-hidden group"
-                                            >
-                                                <span className="relative z-10 flex items-center gap-3 uppercase tracking-tighter">FINISH MENU <FiChevronRight /></span>
-                                                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                                            </button>
-                                        </div>
-                                    )}
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await api.post(`/requests/${requestId}/publish`);
+                                                navigate("/completion");
+                                            } catch (e: any) {
+                                                toast.error("Failed to publish menu");
+                                            }
+                                        }}
+                                        className="px-12 py-7 bg-gray-950 hover:bg-black text-white rounded-[2.5rem] font-[1000] text-xl flex items-center justify-center gap-4 active:scale-[0.98] shadow-2xl transition-all shadow-gray-900/40 relative overflow-hidden group"
+                                    >
+                                        <span className="relative z-10 flex items-center gap-3 uppercase tracking-tighter">FINISH MENU <FiChevronRight /></span>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                    </button>
                                 </div>
                             </div>
                         </div>

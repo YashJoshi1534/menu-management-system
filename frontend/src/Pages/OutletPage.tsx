@@ -1,4 +1,4 @@
-import axios from "axios";
+import api from "../api/client";
 import { useEffect, useRef, useState } from "react";
 import DishCard from "../components/DishCard";
 import { useParams } from "react-router-dom";
@@ -21,8 +21,8 @@ export default function OutletPage() {
   const fetchDishes = async () => {
     if (!outletUid) return;
 
-    const res = await axios.get(
-      `http://127.0.0.1:8000/outlets/${outletUid}/dishes`
+    const res = await api.get(
+      `/outlets/${outletUid}/dishes`
     );
     setDishes(res.data);
   };
@@ -49,8 +49,8 @@ export default function OutletPage() {
 
       for (const dish of toGenerate) {
         try {
-          await axios.post(
-            `http://127.0.0.1:8000/generate-dish-image/${dish.dishId}`
+          await api.post(
+            `/generate-dish-image/${dish.dishId}`
           );
 
           await fetchDishes();

@@ -58,6 +58,7 @@ class OutletDB(OutletBase):
     longitude: Optional[float] = None
     isActive: bool = True
     isDeleted: bool = False
+    qrScanCount: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -66,7 +67,7 @@ class OutletUpdate(BaseModel):
     address: Optional[str] = None
     city: Optional[str] = None
     zipCode: Optional[str] = None
-    phone: Optional[str] = None
+    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
     isActive: Optional[bool] = None
     currency: Optional[str] = None
     latitude: Optional[float] = None
@@ -116,11 +117,19 @@ class BusinessBase(BaseModel):
     name: str
     email: EmailStr
     businessType: Optional[str] = None
-    phone: Optional[str] = None
+    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
+    contactName: Optional[str] = None
     logoUrl: Optional[str] = None
 
 class BusinessCreate(BusinessBase):
     pass
+
+class BusinessUpdate(BaseModel):
+    name: Optional[str] = None
+    businessType: Optional[str] = None
+    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
+    contactName: Optional[str] = None
+    logoData: Optional[str] = None  # Base64 logo for upload
 
 class BusinessDB(BusinessBase):
     businessId: str
@@ -136,6 +145,21 @@ class AdminConfigDB(BaseModel):
     otpResendWaitSeconds: int = 30
     imageGenerationLimit: int = 50
     imageGenerationLimitPerDish: int = 1
+    maxImagesPerUpload: int = 5
+    processCreationLimit: int = 3
+
+# --- Business Config Models ---
+class BusinessConfigDB(AdminConfigDB):
+    businessId: str
+
+class BusinessConfigUpdate(BaseModel):
+    maxOtpResends: Optional[int] = None
+    otpBlockDurationMinutes: Optional[int] = None
+    otpResendWaitSeconds: Optional[int] = None
+    imageGenerationLimit: Optional[int] = None
+    imageGenerationLimitPerDish: Optional[int] = None
+    maxImagesPerUpload: Optional[int] = None
+    processCreationLimit: Optional[int] = None
 
 # --- OTP Models ---
 class OTPRecord(BaseModel):

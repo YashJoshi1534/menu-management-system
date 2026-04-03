@@ -1,23 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import api from "../api/client";
-import { FiEdit2, FiX, FiBriefcase, FiArrowRight, FiUser, FiPhone, FiMail, FiTag, FiCheck } from "react-icons/fi";
+import { FiEdit2, FiX, FiBriefcase, FiArrowRight, FiUser, FiPhone, FiMail, FiTag, FiCheck, FiChevronDown, FiCamera, FiTrash2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
+import Breadcrumb from "../components/Breadcrumb";
 
 export default function ConfigureOutlets() {
     const navigate = useNavigate();
-    const { business } = useAuth();
+    const { business, updateBusiness } = useAuth();
     const [businessForm, setBusinessForm] = useState<any>({});
     const [businessTypes, setBusinessTypes] = useState<any[]>([]);
     const [isEditingBusiness, setIsEditingBusiness] = useState(false);
     const [loadingBusinessSave, setLoadingBusinessSave] = useState(false);
     const [isBusinessModalOpen, setIsBusinessModalOpen] = useState(false);
     const [outletCount, setOutletCount] = useState<number | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [logoData, setLogoData] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (!business) return;
         setBusinessForm(business);
+        setLogoPreview(business.logoUrl || null);
         fetchBusinessTypes();
         fetchOutletCount();
     }, [business]);
@@ -39,14 +44,78 @@ export default function ConfigureOutlets() {
             const res = await api.get("/admin/business-types");
             setBusinessTypes(res.data || []);
         } catch (error) {
-            setBusinessTypes([{ id: "1", name: "Restaurant" }, { id: "2", name: "Cafe" }, { id: "3", name: "Bar" }]);
+            setBusinessTypes(["Restaurant", "Cafe", "Bar", "Hotel", "Other"]);
+        }
+    };
+
+    const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = reader.result as string;
+                setLogoPreview(base64String);
+                setLogoData(base64String);
+                // Reset file input so the same file can be selected again
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleRemoveLogo = () => {
+        setLogoPreview(null);
+        setLogoData(null); 
+        // Also reset file input in case they want to re-add the same file
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
         }
     };
 
     const handleUpdateBusiness = async () => {
+        // Validation Checks
+        if (!businessForm.name?.trim()) {
+            return toast.error("Business Name is required");
+        }
+        if (!businessForm.contactName?.trim()) {
+            return toast.error("Contact Person is required");
+        }
+        if (!businessForm.phone?.trim()) {
+            return toast.error("Business Phone is required");
+        }
+        if (businessForm.phone.length !== 10) {
+            return toast.error("Phone number must be exactly 10 digits");
+        }
+        if (!businessForm.businessType) {
+            return toast.error("Please select a Business Type");
+        }
+
         setLoadingBusinessSave(true);
         try {
-            await api.put(`/auth/me/${business?.businessId}`, businessForm);
+            // Destructure to exclude sensitive/read-only fields from the payload
+            const { 
+                accessToken, 
+                refreshToken, 
+                businessId, 
+                email, 
+                logoUrl,
+                ...cleanForm 
+            } = businessForm;
+
+            const payload = { 
+                ...cleanForm, 
+                logoData: logoData 
+            };
+            
+            const response = await api.put(`/auth/me/${business?.businessId}`, payload);
+            
+            // Sync the full updated business object from the backend
+            if (response.data.business) {
+                updateBusiness(response.data.business);
+            }
+            
             toast.success("Business updated! ✨");
             setIsEditingBusiness(false);
             setIsBusinessModalOpen(false);
@@ -94,30 +163,88 @@ export default function ConfigureOutlets() {
 
                     {/* Content Area */}
                     <div className="p-12 pt-16 overflow-y-auto scrollbar-hide flex-1">
+                        {/* Logo Upload Section */}
+                        <div className="mb-12 flex flex-col items-center">
+                            <div className="relative group">
+                                <div className="w-32 h-32 rounded-[2.5rem] bg-gray-50 border-4 border-white shadow-xl overflow-hidden flex items-center justify-center transition-all group-hover:scale-105">
+                                    {logoPreview ? (
+                                        <img src={logoPreview} alt="Logo Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="text-gray-300 flex flex-col items-center gap-1 font-black text-[0.6rem] uppercase tracking-tighter">
+                                            <FiCamera size={32} className="mb-1" />
+                                            No Logo
+                                        </div>
+                                    )}
+                                </div>
+                                {isEditingBusiness && (
+                                    <div className="absolute -bottom-2 -right-2 flex gap-2">
+                                        <label className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg cursor-pointer hover:bg-blue-700 transition-all active:scale-90">
+                                            <FiCamera size={18} />
+                                            <input 
+                                                type="file" 
+                                                ref={fileInputRef}
+                                                className="hidden" 
+                                                accept="image/*" 
+                                                onChange={handleLogoChange} 
+                                            />
+                                        </label>
+                                        {logoPreview && (
+                                            <button 
+                                                onClick={handleRemoveLogo}
+                                                className="p-3 bg-red-500 text-white rounded-2xl shadow-lg hover:bg-red-600 transition-all active:scale-90"
+                                            >
+                                                <FiTrash2 size={18} />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="mt-4 text-center">
+                                <span className="text-xs font-black uppercase tracking-[0.2em] text-gray-400">Business Logo</span>
+                                <p className="text-[0.65rem] text-gray-400 font-bold mt-1">(Optional)</p>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                             {[
-                                { label: "Business Name", value: businessForm?.name, icon: <FiBriefcase />, field: "name" },
+                                { label: "Business Name", value: businessForm?.name, icon: <FiBriefcase />, field: "name", required: true },
                                 { label: "Email Address", value: businessForm?.email, icon: <FiMail />, field: "email", disabled: true },
-                                { label: "Contact Person", value: businessForm?.contactName, icon: <FiUser />, field: "contactName" },
-                                { label: "Business Phone", value: businessForm?.phone, icon: <FiPhone />, field: "phone" },
-                                { label: "Business Type", value: businessTypes.find(t => t.id === businessForm?.businessTypeId || t.typeId === businessForm?.businessTypeId)?.name || "Not Set", icon: <FiTag />, field: "businessTypeId", isSelect: true },
+                                { label: "Contact Person", value: businessForm?.contactName, icon: <FiUser />, field: "contactName", required: true },
+                                { label: "Business Phone", value: businessForm?.phone ? `+91 ${businessForm.phone}` : "Not Set", icon: <FiPhone />, field: "phone", required: true },
+                                { label: "Business Type", value: businessForm?.businessType || "Not Set", icon: <FiTag />, field: "businessType", isSelect: true, required: true },
                             ].map((item, idx) => (
                                 <div key={idx} className={`space-y-3 group ${item.disabled ? 'opacity-70' : ''}`}>
                                     <label className="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                                        {item.icon} {item.label}
+                                        {item.icon} {item.label} {item.required && <span className="text-red-500">*</span>}
                                     </label>
                                     {isEditingBusiness && !item.disabled ? (
                                         item.isSelect ? (
-                                            <select
-                                                className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold text-gray-800 focus:ring-4 focus:ring-slate-100 outline-none transition-all appearance-none"
-                                                value={businessForm[item.field] || ""}
-                                                onChange={e => setBusinessForm({ ...businessForm, [item.field]: e.target.value })}
-                                            >
-                                                <option value="">Select a type</option>
-                                                {businessTypes.map(type => (
-                                                    <option key={type.id || type.typeId} value={type.id || type.typeId}>{type.name}</option>
-                                                ))}
-                                            </select>
+                                            <div className="relative group">
+                                                <select
+                                                    className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold text-gray-800 focus:ring-4 focus:ring-slate-100 outline-none transition-all appearance-none cursor-pointer"
+                                                    value={businessForm[item.field] || ""}
+                                                    onChange={e => setBusinessForm({ ...businessForm, [item.field]: e.target.value })}
+                                                >
+                                                    <option value="">Select a type</option>
+                                                    {businessTypes.map(type => (
+                                                        <option key={type} value={type}>{type}</option>
+                                                    ))}
+                                                </select>
+                                                <FiChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        ) : item.field === "phone" ? (
+                                            <div className="flex items-center">
+                                                <div className="px-5 py-4 bg-blue-50 border border-gray-200 border-r-0 rounded-l-2xl font-black text-blue-600 text-sm">
+                                                    +91
+                                                </div>
+                                                <input
+                                                    type="tel"
+                                                    maxLength={10}
+                                                    className="flex-1 px-6 py-4 bg-gray-50 border border-gray-200 rounded-r-2xl font-bold text-gray-800 focus:ring-4 focus:ring-slate-100 outline-none transition-all"
+                                                    value={businessForm[item.field] || ""}
+                                                    onChange={e => setBusinessForm({ ...businessForm, [item.field]: e.target.value.replace(/\D/g, "") })}
+                                                />
+                                            </div>
                                         ) : (
                                             <input
                                                 type={item.field === "email" ? "email" : "text"}
@@ -148,15 +275,7 @@ export default function ConfigureOutlets() {
                                         <><FiCheck size={24} /> Save Changes</>
                                     )}
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        setIsEditingBusiness(false);
-                                        setBusinessForm({ ...business });
-                                    }}
-                                    className="px-10 bg-gray-100 hover:bg-gray-200 text-gray-600 py-5 rounded-[2rem] font-black text-lg transition-all active:scale-95"
-                                >
-                                    Cancel
-                                </button>
+
                             </div>
                         )}
                     </div>
@@ -167,7 +286,8 @@ export default function ConfigureOutlets() {
 
     return (
         <div className="min-h-[calc(100vh-76px)] bg-gray-50 p-0 md:p-8 relative overflow-y-auto animate-in fade-in duration-500 scrollbar-hide">
-            <div className="max-w-6xl mx-auto py-12 px-4 space-y-12 pb-24">
+            <div className="max-w-6xl mx-auto pt-4 pb-12 px-4 space-y-4">
+                <Breadcrumb items={[{ label: 'Business Profile' }]} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                     {/* Outlets Overview Card */}
                     <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-10 group hover:-translate-y-1 transition-all duration-500 min-h-[480px] flex flex-col items-center text-center">

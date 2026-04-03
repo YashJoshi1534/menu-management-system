@@ -20,6 +20,7 @@ businesses_collection = db["businesses"]
 otps_collection = db["otps"]
 admin_config_collection = db["admin_config"]
 business_types_collection = db["business_types"]
+business_config_collection = db["business_configuration"]
 scans_collection = db["scans"]
 
 
@@ -35,4 +36,3 @@ async def rename_legacy_collections():
             print("✅ Renamed MongoDB collection: store_profiles → outlet_profiles")
     except Exception as e:
         print(f"⚠️ Warning: Auto-migration failed: {str(e)}")
-        print("💡 You may need to manually rename 'store_profiles' to 'outlet_profiles' in MongoDB Atlas.")

@@ -1,27 +1,46 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import { FiPhone, FiMapPin, FiNavigation } from "react-icons/fi";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { GoogleMap, useJsApiLoader, MarkerF } from "@react-google-maps/api";
 
-// Fix leaflet icon issue in React
-// @ts-ignore
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-    iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-});
+const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
-function MapUpdater({ center }: { center: [number, number] }) {
-    const map = useMap();
-    useEffect(() => {
-        map.setView(center, map.getZoom());
-    }, [center, map]);
-    return null;
-}
+const mapContainerStyle = {
+    width: "100%",
+    height: "100%",
+};
+
+const mapOptions = {
+    disableDefaultUI: true,
+    zoomControl: false,
+    scrollwheel: false,
+    disableDoubleClickZoom: true,
+    styles: [
+        {
+            "featureType": "all",
+            "elementType": "labels.text.fill",
+            "stylers": [{ "color": "#747474" }, { "lightness": "4" }]
+        },
+        {
+            "featureType": "administrative",
+            "elementType": "geometry.fill",
+            "stylers": [{ "color": "#fefefe" }, { "lightness": "20" }]
+        },
+        {
+            "featureType": "landscape",
+            "elementType": "geometry",
+            "stylers": [{ "color": "#f5f5f5" }, { "lightness": "20" }]
+        },
+        {
+            "featureType": "poi",
+            "elementType": "geometry",
+            "stylers": [{ "color": "#f5f5f5" }, { "lightness": "21" }]
+        }
+    ]
+};
+
+// MapUpdater removed as GoogleMap handles center updates reactively
 
 interface Dish {
     dishId: string;
@@ -48,18 +67,41 @@ interface OutletData {
 }
 
 export default function PublicMenu() {
+    const { isLoaded } = useJsApiLoader({
+        id: "google-map-script",
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
+        libraries,
+    });
+
     const { outletUid } = useParams();
     const [outlet, setOutlet] = useState<OutletData | null>(null);
     const [menu, setMenu] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [theme] = useState<"light" | "dark">("light");
 
+    const [searchParams] = useSearchParams();
+    const source = searchParams.get("source");
+
     useEffect(() => {
         if (outletUid) {
             fetchMenu();
-            recordScan();
+
+            // Unique QR Scan Logic:
+            // 1. Only record if source is 'qr'
+            // 2. Only record if not already recorded in this session
+            const sessionKey = `scan_recorded_${outletUid}`;
+            const alreadyRecorded = sessionStorage.getItem(sessionKey);
+
+            if (source === "qr" && !alreadyRecorded) {
+                recordScan();
+                sessionStorage.setItem(sessionKey, "true");
+
+                // Clean the URL by removing ?source=qr
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, "", newUrl);
+            }
         }
-    }, [outletUid]);
+    }, [outletUid, source]);
 
     const recordScan = async () => {
         try {
@@ -264,27 +306,27 @@ export default function PublicMenu() {
                             </button>
                         </div>
 
-                        <div className="h-[300px] md:h-auto min-h-[300px] rounded-[2rem] overflow-hidden border-8 border-white shadow-xl ring-1 ring-gray-100 z-0 relative">
-                            <MapContainer
-                                center={[outlet.latitude || 20.5937, outlet.longitude || 78.9629]}
-                                zoom={outlet.latitude ? 16 : 5}
-                                style={{ height: '100%', width: '100%' }}
-                                scrollWheelZoom={false}
-                                boxZoom={false}
-                                dragging={true}
-                                zoomControl={false}
-                            >
-                                <TileLayer
-                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                />
-                                {outlet.latitude && outlet.longitude && (
-                                    <>
-                                        <Marker position={[outlet.latitude, outlet.longitude]} />
-                                        <MapUpdater center={[outlet.latitude, outlet.longitude]} />
-                                    </>
-                                )}
-                            </MapContainer>
+                        <div className="h-[300px] md:h-auto min-h-[300px] rounded-[2rem] overflow-hidden border-8 border-white shadow-xl ring-1 ring-gray-100 z-0 relative bg-gray-50">
+                            {isLoaded ? (
+                                <GoogleMap
+                                    mapContainerStyle={mapContainerStyle}
+                                    center={{ 
+                                        lat: outlet.latitude || 20.5937, 
+                                        lng: outlet.longitude || 78.9629 
+                                    }}
+                                    zoom={outlet.latitude ? 16 : 5}
+                                    options={mapOptions}
+                                >
+                                    {outlet.latitude && outlet.longitude && (
+                                        <MarkerF position={{ lat: outlet.latitude, lng: outlet.longitude }} />
+                                    )}
+                                </GoogleMap>
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-400 font-bold uppercase tracking-widest text-xs">
+                                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                    Map Loading...
+                                </div>
+                            )}
                         </div>
                     </div>
                 </section>

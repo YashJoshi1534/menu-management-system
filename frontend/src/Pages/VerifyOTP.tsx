@@ -82,6 +82,10 @@ export default function VerifyOTP() {
                 businessId: res.data.businessId,
                 name: res.data.name,
                 email: res.data.email,
+                logoUrl: res.data.logoUrl,
+                businessType: res.data.businessType,
+                phone: res.data.phone,
+                contactName: res.data.contactName,
                 accessToken: res.data.accessToken,
                 refreshToken: res.data.refreshToken
             });

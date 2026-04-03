@@ -5,6 +5,10 @@ interface Business {
     businessId: string;
     name: string;
     email: string;
+    logoUrl?: string;
+    businessType?: string;
+    phone?: string;
+    contactName?: string;
     accessToken?: string;
     refreshToken?: string;
 }
@@ -13,6 +17,7 @@ interface AuthContextType {
     business: Business | null;
     isAuthenticated: boolean;
     login: (business: Business) => void;
+    updateBusiness: (updates: Partial<Business>) => void;
     logout: () => void;
     selectedOutletUid: string | null;
     setSelectedOutletUid: (uid: string | null) => void;
@@ -36,6 +41,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCookie("business", JSON.stringify(biz));
         if (biz.accessToken) setCookie("accessToken", biz.accessToken);
         if (biz.refreshToken) setCookie("refreshToken", biz.refreshToken);
+    };
+
+    const updateBusiness = (updates: Partial<Business>) => {
+        if (!business) return;
+        const updated = { ...business, ...updates };
+        setBusiness(updated);
+        setCookie("business", JSON.stringify(updated));
     };
 
     const logout = () => {
@@ -66,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             business,
             isAuthenticated: !!business,
             login,
+            updateBusiness,
             logout,
             selectedOutletUid,
             setSelectedOutletUid: handleSetSelectedOutletUid,

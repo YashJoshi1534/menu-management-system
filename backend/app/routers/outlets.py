@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Form, UploadFile, File, HTTPException, status, Query
 from typing import List, Optional
-from app.database import businesses_collection, outlet_profiles_collection, scans_collection
+from app.database import businesses_collection, outlet_profiles_collection, scans_collection, admin_config_collection, business_config_collection
 from app.services.cloudinary_service import upload_image
-from app.models import OutletDB, OutletUpdate
+from app.models import OutletDB, OutletUpdate, AdminConfigDB
 import uuid
 from datetime import datetime
 import shutil
@@ -26,6 +26,26 @@ async def create_outlet(
     business = await businesses_collection.find_one({"businessId": business_id})
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
+
+    # Check processCreationLimit
+    config_dict = await business_config_collection.find_one({"businessId": business_id})
+    if not config_dict:
+        config_dict = await admin_config_collection.find_one({})
+        if not config_dict:
+            config_dict = AdminConfigDB().dict()
+    
+    config = AdminConfigDB(**config_dict)
+    
+    existing_outlets_count = await outlet_profiles_collection.count_documents({
+        "contactId": business_id, 
+        "isDeleted": {"$ne": True}
+    })
+    
+    if existing_outlets_count >= config.processCreationLimit:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Maximum limit of {config.processCreationLimit} outlets reached for your business."
+        )
 
     outlet_uid = f"store_{uuid.uuid4().hex[:8]}"  # prefix kept for existing data compat
 
@@ -279,6 +299,13 @@ async def record_scan(outlet_uid: str):
         "outletUid": outlet_uid,
         "timestamp": datetime.utcnow()
     })
+    
+    # Increment persistent scan counter on outlet profile
+    await outlet_profiles_collection.update_one(
+        {"storeUid": outlet_uid},
+        {"$inc": {"qrScanCount": 1}}
+    )
+    
     return {"status": "recorded"}
 
 
@@ -317,3 +344,51 @@ async def get_outlet_analytics(outlet_uid: str):
         })
         
     return analytics_data
+
+
+@router.get("/businesses/{business_id}/stats")
+async def get_business_stats(business_id: str):
+    from app.database import outlet_profiles_collection, categories_collection, dishes_collection
+    
+    # Check business exists
+    business = await businesses_collection.find_one({"businessId": business_id})
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    # 1. Total Outlets (Active only)
+    total_outlets = await outlet_profiles_collection.count_documents({
+        "contactId": business_id, 
+        "isDeleted": {"$ne": True},
+        "isActive": True
+    })
+    
+    # 2. Get all outlet UIDs for this business to filter categories/dishes
+    outlet_cursor = outlet_profiles_collection.find({
+        "contactId": business_id, 
+        "isDeleted": {"$ne": True},
+        "isActive": True
+    }, {"storeUid": 1})
+    outlet_uids = [o["storeUid"] async for o in outlet_cursor]
+    
+    # 3. Total Categories
+    total_categories = await categories_collection.count_documents({"storeUid": {"$in": outlet_uids}, "isDeleted": {"$ne": True}})
+    
+    # 4. Total Dishes
+    total_dishes = await dishes_collection.count_documents({"storeUid": {"$in": outlet_uids}, "isDeleted": {"$ne": True}})
+    
+    # 5. Total Scans (Sum of qrScanCount)
+    total_scans = 0
+    scans_cursor = outlet_profiles_collection.find({
+        "contactId": business_id, 
+        "isDeleted": {"$ne": True},
+        "isActive": True
+    }, {"qrScanCount": 1})
+    async for outlet in scans_cursor:
+        total_scans += outlet.get("qrScanCount", 0)
+        
+    return {
+        "outlets": total_outlets,
+        "categories": total_categories,
+        "dishes": total_dishes,
+        "totalScans": total_scans
+    }

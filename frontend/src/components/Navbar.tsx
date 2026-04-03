@@ -1,6 +1,6 @@
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
-import { FiLogOut, FiHome, FiSettings } from "react-icons/fi";
+import { FiLogOut, FiSettings } from "react-icons/fi";
 import { useEffect, useState } from "react";
 import api from "../api/client";
 
@@ -44,13 +44,21 @@ export default function Navbar() {
                     }}
                     className="flex items-center gap-3 text-gray-900 transition-colors group"
                 >
-                    <div className="bg-blue-50 p-2.5 rounded-2xl transition-colors">
-                        <FiHome className="text-2xl text-blue-600" />
+                    <div className="bg-blue-50 p-1.5 rounded-2xl transition-colors shrink-0">
+                        {business.logoUrl ? (
+                            <img 
+                                src={business.logoUrl} 
+                                alt={business.name} 
+                                className="w-9 h-9 rounded-xl object-cover shadow-sm" 
+                            />
+                        ) : (
+                            <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 font-black text-lg">
+                                {business.name.charAt(0).toUpperCase()}
+                            </div>
+                        )}
                     </div>
                     <span className="text-xl font-[1000] tracking-tight whitespace-nowrap transition-colors flex items-center">
-                        <span className="hidden sm:inline">Dashboard</span>
-                        <span className="text-gray-300 font-normal mx-1">|</span>
-                        <span className="truncate max-w-[100px] sm:max-w-[150px] md:max-w-[200px]">{business.name}</span>
+                        <span className="truncate max-w-[180px] sm:max-w-[250px] md:max-w-[350px]">{business.name}</span>
                     </span>
                 </button>
 
@@ -85,9 +93,6 @@ export default function Navbar() {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-5">
-                <div className="text-right hidden lg:block">
-                    <p className="text-xs text-gray-400 font-medium truncate max-w-[150px]">{business.email}</p>
-                </div>
                 <button
                     onClick={() => navigate("/configure-outlets")}
                     className="flex items-center gap-2 px-3 sm:px-4 py-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-xl font-semibold transition-all group"

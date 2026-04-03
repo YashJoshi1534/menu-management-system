@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api/client";
 import { FiUser, FiMapPin, FiMail, FiUploadCloud } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -41,8 +41,8 @@ export default function OutletRegistration() {
     images.forEach((file) => payload.append("images", file));
 
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/create-outlet-ai",
+      const res = await api.post(
+        "/create-outlet-ai",
         payload
       );
       toast.success("Outlet registered successfully 🎉");
