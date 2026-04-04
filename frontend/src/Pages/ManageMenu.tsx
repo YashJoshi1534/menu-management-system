@@ -197,12 +197,9 @@ export default function ManageMenu() {
         }
     };
 
-    const handleDeleteDish = (dishId: string) => {
-        const dish = dishes.find(d => d.dishId === dishId);
-        if (dish) {
-            setDeleteConfirmData({ type: 'dish', id: dishId, name: dish.name });
-            setIsDeleteModalOpen(true);
-        }
+    const handleDeleteDish = (dish: Dish) => {
+        setDeleteConfirmData({ type: 'dish', id: dish.dishId, name: dish.name });
+        setIsDeleteModalOpen(true);
     };
 
     const handleAddCategory = async () => {
@@ -214,7 +211,13 @@ export default function ManageMenu() {
                     isPublished: newCategoryPublished
                 }
             });
-            fetchCategories();
+            
+            if (catPage === 1) {
+                fetchCategories();
+            } else {
+                setCatPage(1);
+            }
+            
             setIsCategoryModalOpen(false);
             setNewCategoryName("");
             setNewCategoryPublished(true);
@@ -249,12 +252,9 @@ export default function ManageMenu() {
         }
     };
 
-    const handleDeleteCategory = (catId: string) => {
-        const category = categories.find(c => c.categoryId === catId);
-        if (category) {
-            setDeleteConfirmData({ type: 'category', id: catId, name: category.categoryName });
-            setIsDeleteModalOpen(true);
-        }
+    const handleDeleteCategory = (category: Category) => {
+        setDeleteConfirmData({ type: 'category', id: category.categoryId, name: category.categoryName });
+        setIsDeleteModalOpen(true);
     };
 
     const confirmDelete = async () => {
@@ -263,13 +263,13 @@ export default function ManageMenu() {
         try {
             if (deleteConfirmData.type === 'category') {
                 await api.delete(`/categories/${deleteConfirmData.id}`);
-                setCategories(categories.filter(cat => cat.categoryId !== deleteConfirmData.id));
+                setCategories(prev => prev.filter(cat => cat.categoryId !== deleteConfirmData.id));
                 setTotalCats(prev => prev - 1);
                 toast.success(`${deleteConfirmData.name} deleted successfully!`);
             } else {
                 await api.delete(`/dishes/${deleteConfirmData.id}`);
-                setDishes(dishes.filter(d => d.dishId !== deleteConfirmData.id));
-                setOriginalDishes(originalDishes.filter(d => d.dishId !== deleteConfirmData.id));
+                setDishes(prev => prev.filter(d => d.dishId !== deleteConfirmData.id));
+                setOriginalDishes(prev => prev.filter(d => d.dishId !== deleteConfirmData.id));
                 setTotalDishes(prev => prev - 1);
                 toast.success(`${deleteConfirmData.name} removed from your menu.`);
             }
@@ -319,25 +319,21 @@ export default function ManageMenu() {
 
     const handleAddManualDish = async (catId: string) => {
         try {
-            const res = await api.post(`/outlets/${outletUid}/dishes`, {
+            await api.post(`/outlets/${outletUid}/dishes`, {
                 categoryId: catId,
                 name: "New Dish",
                 price: 0,
                 description: ""
             });
-            const newDish: Dish = {
-                dishId: res.data.dishId,
-                requestId: 'manual',
-                name: res.data.name,
-                price: res.data.price,
-                weight: null,
-                description: "",
-                imageUrl: null
-            };
-            setDishes([newDish, ...dishes]);
-            setOriginalDishes([newDish, ...originalDishes]);
-            setTotalDishes(prev => prev + 1);
-            toast.success("Dish added! Edit the details above.");
+            
+            // Re-fetch to ensure sync with backend (especially for pagination)
+            if (dishPage === 1) {
+                fetchDishes();
+            } else {
+                setDishPage(1);
+            }
+            
+            toast.success("Dish added! Edit the details below.");
         } catch (e) {
             toast.error("Failed to add dish");
         }
@@ -533,7 +529,7 @@ export default function ManageMenu() {
                                     <FiEdit2 />
                                 </button>
                                 <button
-                                    onClick={() => handleDeleteCategory(category.categoryId)}
+                                    onClick={() => handleDeleteCategory(category)}
                                     className="p-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors cursor-pointer"
                                 >
                                     <FiTrash2 />
@@ -683,7 +679,7 @@ export default function ManageMenu() {
                                                 />
                                             </label>
                                             <button
-                                                onClick={() => handleDeleteDish(dish.dishId)}
+                                                onClick={() => handleDeleteDish(dish)}
                                                 className="p-4 bg-red-500/80 hover:bg-red-600/90 backdrop-blur-md rounded-2xl text-white transition-all active:scale-95 cursor-pointer"
                                                 title="Delete Dish"
                                             >
@@ -760,12 +756,25 @@ export default function ManageMenu() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-end pt-2 md:pt-4">
+                                <div className="flex items-center justify-end gap-3 md:gap-4 pt-2 md:pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleDeleteDish(dish);
+                                        }}
+                                        className="h-10 md:h-14 px-4 md:px-6 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer z-10"
+                                        title="Delete Dish"
+                                    >
+                                        <FiTrash2 className="text-lg md:text-xl" />
+                                        <span className="text-xs md:text-sm font-black uppercase tracking-widest hidden sm:block">Delete</span>
+                                    </button>
 
                                     <button
                                         onClick={() => saveDish(dish)}
                                         disabled={!isDishDirty(dish) || isSaving}
-                                        className={`w-full sm:w-auto px-8 md:px-10 py-4 md:py-5 rounded-xl md:rounded-2xl font-black text-base md:text-lg transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${isDishDirty(dish)
+                                        className={`flex-1 sm:flex-none h-10 md:h-14 px-8 md:px-10 rounded-xl md:rounded-2xl font-black text-sm md:text-lg transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${isDishDirty(dish)
                                             ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100 cursor-pointer'
                                             : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
                                     >

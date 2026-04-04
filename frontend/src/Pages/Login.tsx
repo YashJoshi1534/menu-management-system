@@ -15,6 +15,7 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState<"email" | "details">("email");
     const [isNewAccount, setIsNewAccount] = useState<boolean | null>(null);
+    const [isDraggingLogo, setIsDraggingLogo] = useState(false);
     const [showSessionModal, setShowSessionModal] = useState(false);
     const navigate = useNavigate();
 
@@ -61,6 +62,32 @@ export default function Login() {
         setLogoData(null);
         if (logoPreview) URL.revokeObjectURL(logoPreview);
         setLogoPreview(null);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDraggingLogo(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDraggingLogo(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDraggingLogo(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && file.type.startsWith("image/")) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLogoData(reader.result as string);
+                setLogoPreview(URL.createObjectURL(file));
+            };
+            reader.readAsDataURL(file);
+            toast.success("Logo dropped! 🖼️");
+        } else if (file) {
+            toast.error("Please drop an image file.");
+        }
     };
 
     const handleContinue = async (e: React.FormEvent) => {
@@ -209,15 +236,34 @@ export default function Login() {
                                 <div className="relative group flex flex-col gap-2">
                                     <label className="text-sm font-medium text-gray-700 ml-1 mt-2">Business Logo <span className="text-gray-400 font-normal">(Optional)</span></label>
                                     <div className="flex items-center gap-4">
-                                        <label className="flex-1 border-2 border-dashed border-gray-200 bg-gray-50 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all text-gray-500 hover:text-blue-600">
-                                            <FiUploadCloud className="text-2xl mb-1" />
-                                            <span className="text-sm font-bold">Upload Logo</span>
+                                        <label 
+                                            onDragOver={handleDragOver}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={handleDrop}
+                                            className={`flex-1 border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
+                                                isDraggingLogo 
+                                                ? 'border-blue-500 bg-blue-50/50 scale-[1.02] shadow-lg shadow-blue-100' 
+                                                : 'border-gray-200 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/30 text-gray-500 hover:text-blue-600'
+                                            }`}
+                                        >
+                                            <FiUploadCloud className={`text-3xl mb-1 transition-transform ${isDraggingLogo ? 'scale-125 text-blue-600' : ''}`} />
+                                            <span className={`text-sm font-bold ${isDraggingLogo ? 'text-blue-600' : ''}`}>
+                                                {isDraggingLogo ? 'Drop to Upload' : 'Upload Logo'}
+                                            </span>
                                             <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
                                         </label>
                                         {logoPreview && (
-                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden shadow-sm border border-gray-200 shrink-0 group/logo">
+                                            <div className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-md border-2 border-white ring-4 ring-gray-50 shrink-0 group/logo animate-in zoom-in duration-300">
                                                 <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
-                                                <button type="button" onClick={removeLogo} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover/logo:opacity-100 transition-opacity hover:bg-red-500">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        removeLogo();
+                                                    }} 
+                                                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/logo:opacity-100 transition-opacity hover:bg-red-500"
+                                                >
                                                     <FiX className="text-xs" />
                                                 </button>
                                             </div>

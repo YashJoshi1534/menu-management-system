@@ -9,6 +9,8 @@ import math
 
 logger = get_logger(__name__)
 import asyncio
+import uuid
+from datetime import datetime
 
 router = APIRouter(tags=["Dishes"])
 
@@ -114,7 +116,7 @@ async def update_dish(dish_id: str, update_data: dict):
     # Determine what fields to update
     # Expected keys: name, price, weight, description
     
-    update_fields = {}
+    update_fields = {"updatedAt": datetime.utcnow()}
     if "name" in update_data:
         update_fields["name"] = update_data["name"]
     if "price" in update_data:
@@ -148,7 +150,8 @@ async def update_dish(dish_id: str, update_data: dict):
                     "requestId": dish.get("requestId", "manual"),
                     "name": cat_name,
                     "isPublished": True,
-                    "createdAt": datetime.utcnow()
+                    "createdAt": datetime.utcnow(),
+                    "updatedAt": datetime.utcnow()
                 })
             else:
                 cat_id = cat["categoryId"]
@@ -169,13 +172,11 @@ async def update_dish(dish_id: str, update_data: dict):
     return {"message": "Dish updated successfully", "updatedFields": update_fields}
 
 
-@router.post("/outlets/{outlet_uid}/dishes")
+@router.post("/outlets/{outlet_uid}/dishes", response_model=DishDB)
 async def create_manual_dish(outlet_uid: str, dish_data: dict):
     # dish_data expected: name, price, weight, description, categoryId
-    import uuid
-    from datetime import datetime
     
-    dish_id = f"dish_{(uuid.uuid4().hex)[:8]}"
+    dish_id = f"dish_{uuid.uuid4().hex[:8]}"
     
     new_dish = {
         "dishId": dish_id,

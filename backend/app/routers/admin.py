@@ -49,3 +49,15 @@ async def update_business_config(business_id: str, update: BusinessConfigUpdate)
     
     updated_config = await business_config_collection.find_one({"businessId": business_id}, {"_id": 0})
     return BusinessConfigDB(**updated_config)
+
+@router.get("/business-types", response_model=List[str])
+async def get_business_types():
+    # Attempt to fetch from DB
+    cursor = business_types_collection.find({}, {"_id": 0, "name": 1})
+    types = await cursor.to_list(length=100)
+    
+    if not types:
+        # Fallback to defaults to prevent empty UI and 404s
+        return ["Restaurant", "Cafe", "Bar", "Hotel", "Cloud Kitchen", "Bakery", "Other"]
+        
+    return [t["name"] for t in types]

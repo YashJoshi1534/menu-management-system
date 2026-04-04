@@ -240,14 +240,20 @@ export default function OutletSetup() {
                     const { latitude, longitude } = pos.coords;
                     setLatitude(latitude);
                     setLongitude(longitude);
-                    // Pass false to specifically avoid auto-setting inputs like address/city on mount
                     fetchAddressDetails(latitude, longitude, false);
                     toast.success("Location detected! Tap map to pick address. 📍");
                 },
-                () => {
-                    toast.error("Location permission denied. Map centered on default. 📍");
+                (error) => {
+                    console.error("Geolocation error:", error);
+                    let msg = "Location permission denied. Map centered on default. 📍";
+                    if (error.code === error.TIMEOUT) {
+                        msg = "Location detection timed out. Please try map search. 📍";
+                    } else if (error.code === error.POSITION_UNAVAILABLE) {
+                        msg = "Location information is unavailable. 📍";
+                    }
+                    toast.error(msg);
                 },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
             );
         }
     }, [selectedOutletUid, isExistingOutlet, fetchAddressDetails]);
@@ -401,7 +407,7 @@ export default function OutletSetup() {
                 <ProgressBar currentStep={1} outletName={outletName} />
                 
                 <div className="text-center space-y-3">
-                    <h2 className="text-4xl md:text-5xl font-[1000] text-gray-900 tracking-tighter leading-none">Settings up your outlet</h2>
+                    <h2 className="text-4xl md:text-5xl font-[1000] text-gray-900 tracking-tighter leading-none">Setting up your outlet</h2>
                     <p className="text-gray-400 text-sm md:text-lg font-medium">Just a few details to get your digital menu ready.</p>
                 </div>
 

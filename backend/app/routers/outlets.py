@@ -255,7 +255,8 @@ async def create_outlet_category(outlet_uid: str, name: str, isPublished: bool =
         "requestId": "manual",
         "name": name,
         "isPublished": isPublished,
-        "createdAt": datetime.utcnow()
+        "createdAt": datetime.utcnow(),
+        "updatedAt": datetime.utcnow()
     }
     
     await categories_collection.insert_one(new_cat)

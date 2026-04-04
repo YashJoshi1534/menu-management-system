@@ -67,7 +67,7 @@ class OutletUpdate(BaseModel):
     address: Optional[str] = None
     city: Optional[str] = None
     zipCode: Optional[str] = None
-    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
+    phone: Optional[str] = Field(None, pattern=r"^\+?\d{10,15}$")
     isActive: Optional[bool] = None
     currency: Optional[str] = None
     latitude: Optional[float] = None
@@ -94,6 +94,8 @@ class CategoryDB(BaseModel):
     requestId: str
     name: str
     isPublished: bool = False
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
 # --- Dish Models ---
 class DishDB(BaseModel):
@@ -111,13 +113,15 @@ class DishDB(BaseModel):
     imageIndex: int
     isPublished: bool = False
     generationCount: int = 0
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
 # --- Business Models ---
 class BusinessBase(BaseModel):
     name: str
     email: EmailStr
     businessType: Optional[str] = None
-    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
+    phone: Optional[str] = Field(None, pattern=r"^\+?\d{10,15}$")
     contactName: Optional[str] = None
     logoUrl: Optional[str] = None
 
@@ -127,7 +131,7 @@ class BusinessCreate(BusinessBase):
 class BusinessUpdate(BaseModel):
     name: Optional[str] = None
     businessType: Optional[str] = None
-    phone: Optional[str] = Field(None, pattern=r"^\d{10,15}$")
+    phone: Optional[str] = Field(None, pattern=r"^\+?\d{10,15}$")
     contactName: Optional[str] = None
     logoData: Optional[str] = None  # Base64 logo for upload
 
