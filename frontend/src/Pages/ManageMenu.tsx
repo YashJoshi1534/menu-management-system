@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { FiSave, FiRefreshCw, FiArrowLeft, FiCamera, FiArrowRight, FiPlus, FiEdit2, FiTrash2, FiSearch, FiUpload } from "react-icons/fi";
@@ -7,7 +7,7 @@ import Breadcrumb from "../components/Breadcrumb";
 
 interface Dish {
     dishId: string;
-    requestId: string; // Needed for specific regeneration endpoint if it requires requestId
+    requestId: string;
     name: string;
     price: number | null;
     weight: string | null;
@@ -15,6 +15,8 @@ interface Dish {
     imageUrl: string | null;
     imageStatus?: string;
     generationCount?: number;
+    pendingImageFile?: File;
+    previewUrl?: string;
 }
 
 interface Category {
@@ -112,6 +114,16 @@ export default function ManageMenu() {
         }
     }, [viewMode, selectedCategoryId, dishSearch, dishPage]);
 
+    const handleCatSearch = useCallback((val: string) => {
+        setCatSearch(val);
+        setCatPage(1);
+    }, []);
+
+    const handleDishSearch = useCallback((val: string) => {
+        setDishSearch(val);
+        setDishPage(1);
+    }, []);
+
     const fetchOutletInfo = async () => {
         try {
             const res = await api.get(`/outlets/${outletUid}/menu`);
@@ -144,6 +156,7 @@ export default function ManageMenu() {
         if (!selectedCategoryId) return;
         setDishesLoading(true);
         try {
+            console.log(`FETCHING DISHES: Page ${dishPage}, Limit ${dishLimit}`);
             const res = await api.get(`/outlets/${outletUid}/dishes`, {
                 params: { 
                     categoryId: selectedCategoryId, 
@@ -151,6 +164,11 @@ export default function ManageMenu() {
                     page: dishPage, 
                     limit: dishLimit 
                 }
+            });
+            console.log("FETCH SUCCESS:", { 
+                count: res.data.dishes.length, 
+                total: res.data.total, 
+                page: res.data.page 
             });
             setDishes(res.data.dishes);
             setOriginalDishes(JSON.parse(JSON.stringify(res.data.dishes)));
@@ -170,28 +188,64 @@ export default function ManageMenu() {
 
     const isDishDirty = (currentDish: Dish) => {
         const origDish = originalDishes.find(d => d.dishId === currentDish.dishId);
+        
+        // Helper to treat null and "" as equivalent
+        const normalize = (val: any) => (val === null || val === undefined) ? "" : String(val).trim();
+
+        if (currentDish.pendingImageFile) return true;
+
         if (origDish) {
-            return origDish.name !== currentDish.name ||
-                Number(origDish.price) !== Number(currentDish.price) ||
-                origDish.weight !== currentDish.weight ||
-                origDish.description !== currentDish.description;
+            const nameChanged = normalize(origDish.name) !== normalize(currentDish.name);
+            const priceChanged = Number(origDish.price) !== Number(currentDish.price);
+            const weightChanged = normalize(origDish.weight) !== normalize(currentDish.weight);
+            const descChanged = normalize(origDish.description) !== normalize(currentDish.description);
+
+            return nameChanged || priceChanged || weightChanged || descChanged;
         }
         return currentDish.requestId === 'manual' && !currentDish.dishId.startsWith('temp_');
     };
 
-    const saveDish = async (dish: Dish) => {
+    const saveDish = async (e: React.MouseEvent, dish: Dish) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("Saving dish:", dish.dishId);
         setIsSaving(true);
         try {
-            await api.put(`/dishes/${dish.dishId}`, {
+            let finalImageUrl = dish.imageUrl;
+
+            // Step 1: Upload image if pending
+            if (dish.pendingImageFile) {
+                console.log("Uploading pending image...");
+                const formData = new FormData();
+                formData.append('file', dish.pendingImageFile);
+                const uploadRes = await api.post(`/dishes/${dish.dishId}/upload-image`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                finalImageUrl = uploadRes.data.imageUrl;
+            }
+
+            // Step 2: Save Metadata
+            const updatePayload = {
                 name: dish.name,
-                price: dish.price,
+                price: (dish.price as any) === "" ? 0 : Number(dish.price),
                 weight: dish.weight,
-                description: dish.description
-            });
-            setOriginalDishes(originalDishes.map(d => d.dishId === dish.dishId ? { ...dish } : d));
+                description: dish.description,
+                imageUrl: finalImageUrl
+            };
+
+            const res = await api.put(`/dishes/${dish.dishId}`, updatePayload);
+            
+            // Sync state using the actual server response
+            const updatedDish = { ...res.data, pendingImageFile: undefined, previewUrl: undefined };
+            
+            setOriginalDishes(prev => prev.map(d => d.dishId === dish.dishId ? updatedDish : d));
+            setDishes(prev => prev.map(d => d.dishId === dish.dishId ? updatedDish : d));
+            
+            console.log("Save Success:", res.data);
             toast.success("Saved!");
-        } catch (e) {
-            toast.error("Failed to save");
+        } catch (e: any) {
+            console.error("Save Error Detail:", e.response?.data || e.message);
+            toast.error(e.response?.data?.detail || "Failed to save");
         } finally {
             setIsSaving(false);
         }
@@ -357,25 +411,10 @@ export default function ManageMenu() {
         }
     };
 
-    const handleManualImageUpload = async (dishId: string, file: File) => {
-        try {
-            setRegeneratingId(dishId);
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            const res = await api.post(`/dishes/${dishId}/upload-image`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            
-            setDishes(prev => prev.map(d => d.dishId === dishId ? { ...d, imageUrl: res.data.imageUrl, imageStatus: 'ready' } : d));
-            toast.success("Image uploaded!");
-        } catch (error) {
-            toast.error("Upload failed");
-        } finally {
-            setRegeneratingId(null);
-        }
+    const handleLocalImagePreview = (dishId: string, file: File) => {
+        const previewUrl = URL.createObjectURL(file);
+        setDishes(prev => prev.map(d => d.dishId === dishId ? { ...d, pendingImageFile: file, previewUrl } : d));
     };
-
 
     const handleDishDragOver = (e: React.DragEvent, dishId: string) => {
         e.preventDefault();
@@ -391,7 +430,7 @@ export default function ManageMenu() {
         setDraggingOverDishId(null);
         const file = e.dataTransfer.files?.[0];
         if (file && file.type.startsWith("image/")) {
-            handleManualImageUpload(dishId, file);
+            handleLocalImagePreview(dishId, file);
         } else if (file) {
             toast.error("Please drop an image file.");
         }
@@ -447,9 +486,13 @@ export default function ManageMenu() {
 
     const SearchInput = ({ initialValue, onSearch, placeholder }: { initialValue: string, onSearch: (v: string) => void, placeholder: string }) => {
         const [localValue, setLocalValue] = useState(initialValue);
+        const lastEmittedValue = useRef(initialValue);
         
         useEffect(() => {
+            if (localValue === lastEmittedValue.current) return;
+
             const timer = setTimeout(() => {
+                lastEmittedValue.current = localValue;
                 onSearch(localValue);
             }, 500);
             return () => clearTimeout(timer);
@@ -480,10 +523,7 @@ export default function ManageMenu() {
                          <SearchInput 
                             placeholder="Find a category..."
                             initialValue={catSearch}
-                            onSearch={(val) => {
-                                setCatSearch(val);
-                                setCatPage(1);
-                            }}
+                            onSearch={handleCatSearch}
                          />
                     </div>
                     <button
@@ -607,10 +647,7 @@ export default function ManageMenu() {
                              <SearchInput 
                                 placeholder="Search dishes..."
                                 initialValue={dishSearch}
-                                onSearch={(val) => {
-                                    setDishSearch(val);
-                                    setDishPage(1);
-                                }}
+                                onSearch={handleDishSearch}
                              />
                         </div>
                         <button
@@ -639,12 +676,18 @@ export default function ManageMenu() {
                                 >
                                     <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
                                     
-                                    {dish.imageUrl ? (
-                                        <img src={dish.imageUrl} alt={dish.name} className="w-full h-full object-cover z-10 relative transition-transform duration-700 group-hover/img:scale-110" />
+                                    {dish.previewUrl || dish.imageUrl ? (
+                                        <img src={dish.previewUrl || dish.imageUrl!} alt={dish.name} className="w-full h-full object-cover z-10 relative transition-transform duration-700 group-hover/img:scale-110" />
                                     ) : (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 z-10">
                                             <FiCamera size={48} className="mb-4 opacity-20" />
                                             <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">No Visualized Image</span>
+                                        </div>
+                                    )}
+
+                                    {dish.previewUrl && (
+                                        <div className="absolute top-4 left-4 bg-indigo-600 text-white text-[8px] font-black uppercase px-2 py-1 rounded-md z-20 shadow-lg tracking-widest animate-pulse">
+                                            Pending Save
                                         </div>
                                     )}
 
@@ -674,7 +717,7 @@ export default function ManageMenu() {
                                                     accept="image/*"
                                                     onChange={(e) => {
                                                         const file = e.target.files?.[0];
-                                                        if (file) handleManualImageUpload(dish.dishId, file);
+                                                        if (file) handleLocalImagePreview(dish.dishId, file);
                                                     }}
                                                 />
                                             </label>
@@ -772,11 +815,13 @@ export default function ManageMenu() {
                                     </button>
 
                                     <button
-                                        onClick={() => saveDish(dish)}
+                                        type="button"
+                                        onClick={(e) => saveDish(e, dish)}
                                         disabled={!isDishDirty(dish) || isSaving}
-                                        className={`flex-1 sm:flex-none h-10 md:h-14 px-8 md:px-10 rounded-xl md:rounded-2xl font-black text-sm md:text-lg transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${isDishDirty(dish)
+                                        className={`flex-1 sm:flex-none h-10 md:h-14 px-8 md:px-10 rounded-xl md:rounded-2xl font-black text-sm md:text-lg transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl relative z-20 ${isDishDirty(dish)
                                             ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100 cursor-pointer'
                                             : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                        data-dish-id={dish.dishId}
                                     >
                                         {isSaving ? <FiRefreshCw className="animate-spin" /> : <FiSave />}
                                         <span>{isDishDirty(dish) ? "Save" : "Saved"}</span>

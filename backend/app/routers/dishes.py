@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
 from typing import Optional
 from app.database import dishes_collection, requests_collection
 from app.services.stability_service import generate_image_stability
@@ -112,7 +112,7 @@ async def generate_dish_image_route(request_id: str, dish_id: str):
         )
         raise HTTPException(status_code=500, detail=str(e))
 @router.put("/dishes/{dish_id}")
-async def update_dish(dish_id: str, update_data: dict):
+async def update_dish(dish_id: str, update_data: dict = Body(...)):
     # Determine what fields to update
     # Expected keys: name, price, weight, description
     
@@ -121,8 +121,9 @@ async def update_dish(dish_id: str, update_data: dict):
         update_fields["name"] = update_data["name"]
     if "price" in update_data:
         try:
-            update_fields["price"] = float(update_data["price"])
-        except:
+            val = update_data["price"]
+            update_fields["price"] = float(val) if val not in [None, ""] else 0.0
+        except (ValueError, TypeError):
             pass # Ignore invalid price
     if "weight" in update_data:
         update_fields["weight"] = update_data["weight"]
@@ -138,8 +139,6 @@ async def update_dish(dish_id: str, update_data: dict):
             store_uid = dish.get("storeUid")
             cat_name = update_data["categoryName"]
             from app.database import categories_collection
-            import uuid
-            from datetime import datetime
             
             cat = await categories_collection.find_one({"storeUid": store_uid, "name": cat_name, "isDeleted": {"$ne": True}})
             if not cat:
@@ -169,11 +168,13 @@ async def update_dish(dish_id: str, update_data: dict):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dish not found")
         
-    return {"message": "Dish updated successfully", "updatedFields": update_fields}
+    # Return the full updated document to allow perfect frontend sync
+    updated_dish = await dishes_collection.find_one({"dishId": dish_id}, {"_id": 0})
+    return updated_dish
 
 
 @router.post("/outlets/{outlet_uid}/dishes", response_model=DishDB)
-async def create_manual_dish(outlet_uid: str, dish_data: dict):
+async def create_manual_dish(outlet_uid: str, dish_data: dict = Body(...)):
     # dish_data expected: name, price, weight, description, categoryId
     
     dish_id = f"dish_{uuid.uuid4().hex[:8]}"

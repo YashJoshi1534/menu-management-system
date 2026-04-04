@@ -266,24 +266,32 @@ async def create_outlet_category(outlet_uid: str, name: str, isPublished: bool =
 @router.get("/outlets/{outlet_uid}/dishes")
 async def get_outlet_dishes(
     outlet_uid: str,
-    categoryId: Optional[str] = None,
-    search: Optional[str] = None,
+    categoryId: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1)
 ):
     from app.database import dishes_collection
+    import logging
+    logger = logging.getLogger("uvicorn")
     
-    query = {"storeUid": outlet_uid, "isPublished": True, "isDeleted": {"$ne": True}}
+    logger.info(f"FETCH DISHES: outlet={outlet_uid}, cat={categoryId}, page={page}, limit={limit}")
+    
+    query = {"storeUid": outlet_uid, "isDeleted": {"$ne": True}}
     if categoryId:
         query["categoryId"] = categoryId
     if search:
         query["name"] = {"$regex": search, "$options": "i"}
         
     total = await dishes_collection.count_documents(query)
-    skip = (page-1) * limit
+    skip = (int(page) - 1) * int(limit)
+    
+    logger.info(f"QUERY EXEC: total={total}, skip={skip}, limit={limit}")
     
     cursor = dishes_collection.find(query, {"_id": 0}).sort("createdAt", -1).skip(skip).limit(limit)
     dishes = await cursor.to_list(length=limit)
+    
+    logger.info(f"RESULTS: count={len(dishes)}")
     
     return {
         "dishes": dishes,
