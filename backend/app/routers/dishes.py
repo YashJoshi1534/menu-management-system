@@ -132,6 +132,13 @@ async def update_dish(dish_id: str, update_data: dict = Body(...)):
     if "isPublished" in update_data:
         update_fields["isPublished"] = bool(update_data["isPublished"])
     
+    # New Fields
+    if "variants" in update_data:
+        update_fields["variants"] = update_data["variants"]
+    if "addons" in update_data:
+        # Expected List[dict(name, price)]
+        update_fields["addons"] = update_data["addons"]
+    
     if "categoryName" in update_data:
         # Find or create category for this store
         dish = await dishes_collection.find_one({"dishId": dish_id})
@@ -191,6 +198,8 @@ async def create_manual_dish(outlet_uid: str, dish_data: dict = Body(...)):
         "imageStatus": "pending",
         "imageIndex": 0,
         "isPublished": True,
+        "variants": dish_data.get("variants", []),
+        "addons": dish_data.get("addons", []),
         "createdAt": datetime.utcnow()
     }
     

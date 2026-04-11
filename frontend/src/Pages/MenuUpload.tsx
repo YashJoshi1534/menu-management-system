@@ -25,14 +25,15 @@ export default function MenuUpload() {
         }
         setRequestId(id);
 
-        if (selectedOutletUid && business?.businessId) {
-            api.get(`/businesses/${business.businessId}/outlets`)
+        if (selectedOutletUid) {
+            api.get(`/outlets/${selectedOutletUid}/menu`)
                 .then(res => {
-                    const outlet = res.data.outlets.find((o: any) => o.storeUid === selectedOutletUid);
-                    if (outlet) setOutletName(outlet.storeName);
+                    if (res.data?.outlet?.storeName) setOutletName(res.data.outlet.storeName);
                 })
                 .catch(err => console.error("Failed to fetch outlet name", err));
+        }
 
+        if (business?.businessId) {
             // Fetch Config for limits
             api.get(`/auth/config?businessId=${business.businessId}`)
                 .then(res => {
@@ -232,15 +233,18 @@ export default function MenuUpload() {
                         <button
                             onClick={handleUpload}
                             disabled={loading || images.length === 0}
-                            className={`w-full py-6 rounded-[2rem] font-[1000] text-xl tracking-tight transition-all shadow-xl flex items-center justify-center gap-4 active:scale-[0.98] ${loading || images.length === 0
-                                    ? "bg-white border-2 border-gray-50 text-gray-200 cursor-not-allowed shadow-none"
-                                    : "bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-500/40"
-                                }`}
+                            className={`w-full py-6 rounded-[2rem] font-[1000] text-xl tracking-tight transition-all shadow-xl flex items-center justify-center gap-4 active:scale-[0.98] ${
+                                images.length === 0 
+                                    ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+                                    : loading 
+                                        ? "bg-slate-800 text-white cursor-not-allowed shadow-none" 
+                                        : "bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-500/40"
+                            }`}
                         >
                             {loading ? (
                                 <div className="flex items-center gap-4">
                                     <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    <span>UPLOADING...</span>
+                                    <span className="animate-pulse">UPLOADING...</span>
                                 </div>
                             ) : (
                                 <>Upload Menu</>

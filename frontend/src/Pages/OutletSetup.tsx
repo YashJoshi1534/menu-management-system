@@ -83,8 +83,6 @@ const pacStyles = `
   }
 `;
 
-// Replaced Leaflet MapUpdater/LocationPicker with Google Map native events
-
 export default function OutletSetup() {
     const { isLoaded } = useJsApiLoader({
         id: "google-map-script",
@@ -110,6 +108,13 @@ export default function OutletSetup() {
         const val = localStorage.getItem("outlet_setup_lng");
         return val ? parseFloat(val) : 78.9629;
     });
+    
+    // Control center for the Map
+    const [mapCenter, setMapCenter] = useState<{lat: number, lng: number}>({ 
+        lat: latitude || 20.5937, 
+        lng: longitude || 78.9629 
+    });
+
     const [currency, setCurrency] = useState("₹");
     const [phone, setPhone] = useState("");
     const [dialCode, setDialCode] = useState("+91");
@@ -144,7 +149,6 @@ export default function OutletSetup() {
                 let countryCode = "";
 
                 result.address_components.forEach(comp => {
-                    // Broader city detection: locality -> sublocality -> admin_area_2
                     if (comp.types.includes("locality")) town = comp.long_name;
                     else if (!town && comp.types.includes("sublocality_level_1")) town = comp.long_name;
                     else if (!town && comp.types.includes("administrative_area_level_2")) town = comp.long_name;
@@ -160,9 +164,6 @@ export default function OutletSetup() {
                     setIsLocationConfirmed(true);
                 }
                 
-                if (countryCode && countryCurrencyMap[countryCode]) {
-                    setCurrency(countryCurrencyMap[countryCode]);
-                }
                 if (countryCode && countryDialCodeMap[countryCode]) {
                     setDialCode(countryDialCodeMap[countryCode]);
                 }
@@ -198,6 +199,7 @@ export default function OutletSetup() {
                         if (outlet.latitude && outlet.longitude) {
                             setLatitude(outlet.latitude);
                             setLongitude(outlet.longitude);
+                            setMapCenter({ lat: outlet.latitude, lng: outlet.longitude });
                             fetchAddressDetails(outlet.latitude, outlet.longitude, false);
                             setIsLocationConfirmed(true);
                         }
@@ -222,6 +224,7 @@ export default function OutletSetup() {
             setZipCode("");
             setLatitude(20.5937);
             setLongitude(78.9629);
+            setMapCenter({ lat: 20.5937, lng: 78.9629 });
             setPreview(null);
             setLogo(null);
             setPhone("");
@@ -232,26 +235,19 @@ export default function OutletSetup() {
 
     // Detect Current Location on Mount
     useEffect(() => {
-        // We allow re-detection even if we have stored lat/lng if the lat/lng match the defaults (initial mount)
-        // or if explicitly requested. For simplicity, we run it if no outlet is selected.
         if (!selectedOutletUid && !isExistingOutlet && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     const { latitude, longitude } = pos.coords;
                     setLatitude(latitude);
                     setLongitude(longitude);
+                    setMapCenter({ lat: latitude, lng: longitude });
                     fetchAddressDetails(latitude, longitude, false);
                     toast.success("Location detected! Tap map to pick address. 📍");
                 },
                 (error) => {
                     console.error("Geolocation error:", error);
-                    let msg = "Location permission denied. Map centered on default. 📍";
-                    if (error.code === error.TIMEOUT) {
-                        msg = "Location detection timed out. Please try map search. 📍";
-                    } else if (error.code === error.POSITION_UNAVAILABLE) {
-                        msg = "Location information is unavailable. 📍";
-                    }
-                    toast.error(msg);
+                    toast.error("Location detection unavailable. 📍");
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
             );
@@ -270,7 +266,6 @@ export default function OutletSetup() {
         }
     }, [outletName, address, city, zipCode, latitude, longitude, isExistingOutlet, isFetchingOutlet, selectedOutletUid]);
 
-    // Google Places Autocomplete logic is handled via the <Autocomplete> component
     const onPlaceChanged = () => {
         if (autocompleteRef.current !== null) {
             const place = autocompleteRef.current.getPlace();
@@ -280,7 +275,6 @@ export default function OutletSetup() {
                 setLatitude(lat);
                 setLongitude(lng);
                 
-                // Extract address components directly from the place object
                 let town = "";
                 let postcode = "";
                 let countryCode = "";
@@ -290,7 +284,6 @@ export default function OutletSetup() {
                         if (comp.types.includes("locality")) town = comp.long_name;
                         else if (!town && comp.types.includes("sublocality_level_1")) town = comp.long_name;
                         else if (!town && comp.types.includes("administrative_area_level_2")) town = comp.long_name;
-                        
                         if (comp.types.includes("postal_code")) postcode = comp.long_name;
                         if (comp.types.includes("country")) countryCode = comp.short_name;
                     });
@@ -301,19 +294,16 @@ export default function OutletSetup() {
                 setZipCode(postcode.replace(/\D/g, "").slice(0, 6));
                 setIsLocationConfirmed(true);
 
-                if (countryCode && countryCurrencyMap[countryCode]) {
-                    setCurrency(countryCurrencyMap[countryCode]);
-                }
                 if (countryCode && countryDialCodeMap[countryCode]) {
                     setDialCode(countryDialCodeMap[countryCode]);
                 }
 
+                setMapCenter({ lat, lng });
                 if (map) map.panTo({ lat, lng });
             }
         }
     };
 
-    // Drag & Drop Handlers
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDraggingLogo(true);
@@ -330,9 +320,6 @@ export default function OutletSetup() {
         if (file && file.type.startsWith("image/")) {
             setLogo(file);
             setPreview(URL.createObjectURL(file));
-            toast.success("Logo dropped! 🖼️");
-        } else if (file) {
-            toast.error("Please drop an image file.");
         }
     };
 
@@ -343,7 +330,6 @@ export default function OutletSetup() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!isFormValid) return;
-        
         setLoading(true);
 
         const formData = new FormData();
@@ -355,9 +341,7 @@ export default function OutletSetup() {
         if (latitude) formData.append("latitude", latitude.toString());
         if (longitude) formData.append("longitude", longitude.toString());
         if (phone) formData.append("phone", `${dialCode} ${phone}`);
-        if (logo) {
-            formData.append("logo", logo);
-        }
+        if (logo) formData.append("logo", logo);
 
         try {
             if (isExistingOutlet && selectedOutletUid) {
@@ -370,21 +354,10 @@ export default function OutletSetup() {
                 });
                 const outletUid = res.data.storeUid;
                 setSelectedOutletUid(outletUid);
-                
                 const reqRes = await api.post(`/outlets/${outletUid}/requests`);
                 localStorage.setItem("requestId", reqRes.data.requestId);
-
-                // Clear persistence
-                localStorage.removeItem("outlet_setup_name");
-                localStorage.removeItem("outlet_setup_address");
-                localStorage.removeItem("outlet_setup_city");
-                localStorage.removeItem("outlet_setup_zip");
-                localStorage.removeItem("outlet_setup_lat");
-                localStorage.removeItem("outlet_setup_lng");
-                
-                toast.success("Outlet created! Let's upload your menu. 🚀");
+                toast.success("Outlet created! 🚀");
             }
-            
             setTimeout(() => navigate("/menu-upload"), 800);
         } catch (error: any) {
             console.error(error);
@@ -397,7 +370,6 @@ export default function OutletSetup() {
     return (
         <div className="min-h-[calc(100vh-76px)] bg-white flex flex-col items-center p-4 md:p-8 relative animate-in fade-in duration-700">
             <style>{pacStyles}</style>
-            {/* Background Decorations */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none fixed z-0">
                 <div className="absolute top-[-5%] right-[-5%] w-[50%] h-[50%] rounded-full bg-blue-500/5 blur-[120px]"></div>
                 <div className="absolute bottom-[-5%] left-[-5%] w-[50%] h-[50%] rounded-full bg-indigo-500/5 blur-[120px]"></div>
@@ -411,7 +383,6 @@ export default function OutletSetup() {
                     <p className="text-gray-400 text-sm md:text-lg font-medium">Just a few details to get your digital menu ready.</p>
                 </div>
 
-                {/* Vertical Mode Toggle - Premium pill style */}
                 <div className="flex bg-gray-100/80 p-1.5 rounded-[2.5rem] w-fit mx-auto shadow-sm border border-gray-100/50 backdrop-blur-sm">
                     <button
                         onClick={() => setSetupMode("map")}
@@ -430,7 +401,6 @@ export default function OutletSetup() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-10 pb-20">
-                    {/* Section 1: Business Identity */}
                     <div className="space-y-6">
                         <div className="relative group">
                             <label className="block text-[11px] font-black text-gray-400 uppercase tracking-[0.25em] mb-3 ml-2">
@@ -477,73 +447,14 @@ export default function OutletSetup() {
                                 </div>
                             </div>
                         </div>
-
-                        <div className="relative group">
-                            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-[0.25em] mb-3 ml-2">
-                                Outlet Logo <span className="text-gray-400/60 font-medium lowercase">(optional)</span>
-                            </label>
-                            <div className="flex items-center gap-4">
-                                <div 
-                                    onDragOver={handleDragOver}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={handleDrop}
-                                    className={`flex-1 flex items-center gap-6 p-6 border-2 border-dashed rounded-[2.5rem] transition-all overflow-hidden group/logo ${isDraggingLogo ? 'border-blue-500 bg-blue-50/50 scale-[1.02] shadow-2xl shadow-blue-100 ring-4 ring-blue-50' : 'bg-gray-50/30 border-gray-100 hover:border-blue-400 hover:bg-blue-50/20 shadow-sm'}`}
-                                >
-                                        <div className="relative shrink-0 group/logo-preview">
-                                            <div className="w-24 h-24 rounded-[1.5rem] bg-white border-2 border-white shadow-xl flex items-center justify-center overflow-hidden ring-4 ring-gray-50/50">
-                                                {preview ? (
-                                                    <img src={preview} alt="Logo" className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <FiUploadCloud className={`text-3xl transition-all duration-300 ${isDraggingLogo ? 'text-blue-600 scale-125' : 'text-blue-500'}`} />
-                                                )}
-                                            </div>
-                                            {preview && (
-                                                <button 
-                                                    type="button" 
-                                                    onClick={(e) => { 
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        setPreview(null); 
-                                                        setLogo(null); 
-                                                        if (fileInputRef.current) fileInputRef.current.value = "";
-                                                    }}
-                                                    className="absolute -top-3 -right-3 h-8 w-8 bg-red-400 text-white rounded-full flex items-center justify-center opacity-0 group-hover/logo-preview:opacity-100 hover:bg-red-600 hover:scale-110 transition-all shadow-lg border-2 border-white z-10 group/close"
-                                                >
-                                                    <FiX size={14} className="group-hover/close:rotate-90 transition-transform" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    <label className="flex-1 flex flex-col cursor-pointer">
-                                        <span className={`text-xl font-black tracking-tight transition-colors ${isDraggingLogo ? 'text-blue-600' : 'text-gray-800'}`}>
-                                            {isDraggingLogo ? 'Drop Logo Here' : (preview ? 'Logo updated' : 'Upload outlet logo')}
-                                        </span>
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">JPG, PNG or SVG</span>
-                                        <input 
-                                            ref={fileInputRef}
-                                            type="file" 
-                                            className="hidden" 
-                                            accept="image/*" 
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) {
-                                                    setLogo(file);
-                                                    setPreview(URL.createObjectURL(file));
-                                                }
-                                            }} 
-                                        />
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
-                    {/* Section 2: Location Data */}
                     <div className="space-y-6 pt-2 border-t border-gray-100/50">
                         {setupMode === "map" ? (
                             <div className="space-y-6 animate-in slide-in-from-bottom-6 duration-700">
                                 <div className="relative z-50">
                                     <label className="block text-[11px] font-black text-gray-400 uppercase tracking-[0.25em] mb-3 ml-2">
-                                        Select Location <span className="text-red-500">*</span>
+                                        Select Outlet Location <span className="text-red-500">*</span>
                                     </label>
                                     {!isLocationConfirmed ? (
                                     <div className="relative group/search">
@@ -580,26 +491,26 @@ export default function OutletSetup() {
                                         <div className="flex-1">
                                             <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none mb-2">Location Ready</p>
                                             <p className="text-blue-900 font-black text-lg leading-tight tracking-tight line-clamp-2">{address}</p>
-                                            <div className="flex gap-4 mt-2">
-                                                <span className="text-xs font-bold text-blue-400/80 bg-blue-100/50 px-3 py-1 rounded-full">{city}</span>
-                                                <span className="text-xs font-bold text-blue-400/80 bg-blue-100/50 px-3 py-1 rounded-full">{zipCode}</span>
+                                            <div className="flex gap-3 mt-3">
+                                                <div className="flex flex-col bg-blue-100/40 px-4 py-2 rounded-2xl border border-blue-100/50">
+                                                    <span className="text-[9px] font-black text-blue-400/60 uppercase tracking-widest">City</span>
+                                                    <span className="text-sm font-black text-blue-600">{city || "Not detected"}</span>
+                                                </div>
+                                                <div className="flex flex-col bg-blue-100/40 px-4 py-2 rounded-2xl border border-blue-100/50">
+                                                    <span className="text-[9px] font-black text-blue-400/60 uppercase tracking-widest">Zip Code</span>
+                                                    <span className="text-sm font-black text-blue-600">{zipCode || "Not detected"}</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <button 
                                             type="button"
-                                            onClick={() => {
-                                                setIsLocationConfirmed(false);
-                                                setSearchQuery(address);
-                                            }}
+                                            onClick={() => setIsLocationConfirmed(false)}
                                             className="p-4 bg-white text-blue-600 hover:bg-blue-600 hover:text-white rounded-2xl transition-all shadow-sm border border-blue-100 shrink-0"
-                                            title="Change location"
                                         >
                                             <FiEdit3 className="text-xl" />
                                         </button>
                                     </div>
                                 )}
-                                
-                                {/* Suggestions Dropdown removed as Google Autocomplete handles this natively */}
                             </div>
 
                             {!isLocationConfirmed && (
@@ -607,7 +518,7 @@ export default function OutletSetup() {
                                     {isLoaded ? (
                                         <GoogleMap
                                             mapContainerStyle={mapContainerStyle}
-                                            center={{ lat: latitude || 20.5937, lng: longitude || 78.9629 }}
+                                            center={mapCenter}
                                             zoom={latitude ? 16 : 5}
                                             onLoad={(map) => setMap(map)}
                                             options={mapOptions}
@@ -627,7 +538,6 @@ export default function OutletSetup() {
                                         </GoogleMap>
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-400 font-bold uppercase tracking-widest text-xs">
-                                            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
                                             Initializing Google Maps...
                                         </div>
                                     )}
@@ -675,49 +585,72 @@ export default function OutletSetup() {
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="6-digit Pincode"
+                                            placeholder="Pincode"
                                             required
                                             maxLength={6}
                                             value={zipCode}
-                                            className={`w-full px-8 py-6 bg-gray-50/50 border-2 rounded-[2.5rem] focus:bg-white focus:ring-[12px] outline-none transition-all font-bold text-xl placeholder:text-gray-300 shadow-sm
-                                                ${zipCode && !isZipValid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-transparent focus:border-blue-500 focus:ring-blue-100/50'}`}
+                                            className="w-full px-8 py-6 bg-gray-50/50 border-2 border-transparent rounded-[2.5rem] focus:bg-white focus:border-blue-500 focus:ring-[112px] focus:ring-blue-100/50 outline-none transition-all font-bold text-xl placeholder:text-gray-300 shadow-sm"
                                             onChange={(e) => setZipCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                                         />
                                     </div>
                                 </div>
-                                
-                                <button 
-                                    type="button" 
-                                    onClick={() => setSetupMode("map")}
-                                    className="flex items-center gap-2 text-blue-500 font-black text-xs uppercase tracking-widest hover:text-blue-700 transition-colors mx-auto"
-                                >
-                                    <FiNavigation className="text-sm" />
-                                    Prefer using map search?
-                                </button>
                             </div>
                         )}
+                    </div>
+
+                    <div className="space-y-6 pt-2 border-t border-gray-100/50">
+                        <div className="relative group">
+                            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-[0.25em] mb-3 ml-2">
+                                Outlet Logo <span className="text-gray-400/60 font-medium lowercase">(optional)</span>
+                            </label>
+                            <div className="flex items-center gap-4">
+                                <div 
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={`flex-1 flex items-center gap-6 p-6 border-2 border-dashed rounded-[2.5rem] transition-all overflow-hidden ${isDraggingLogo ? 'border-blue-500 bg-blue-50/50' : 'bg-gray-50/30 border-gray-100'}`}
+                                >
+                                    <div className="relative shrink-0">
+                                        <div className="w-24 h-24 rounded-[1.5rem] bg-white border-2 border-white shadow-xl flex items-center justify-center overflow-hidden">
+                                            {preview ? (
+                                                <img src={preview} alt="Logo" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <FiUploadCloud className="text-3xl text-blue-500" />
+                                            )}
+                                        </div>
+                                    </div>
+                                    <label className="flex-1 flex flex-col cursor-pointer">
+                                        <span className="text-xl font-black tracking-tight text-gray-800">
+                                            {preview ? 'Logo updated' : 'Upload outlet logo'}
+                                        </span>
+                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">JPG, PNG or SVG</span>
+                                        <input 
+                                            ref={fileInputRef}
+                                            type="file" 
+                                            className="hidden" 
+                                            accept="image/*" 
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    setLogo(file);
+                                                    setPreview(URL.createObjectURL(file));
+                                                }
+                                            }} 
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="pt-10 flex flex-col items-center">
                         <button
                             type="submit"
                             disabled={loading || !isFormValid}
-                            className={`group relative overflow-hidden px-14 py-7 rounded-[3rem] font-black text-xl uppercase tracking-[0.2em] shadow-2xl shadow-blue-500/30 active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed w-full max-w-md ${loading ? 'bg-gray-400' : 'bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white hover:shadow-blue-300/60'}`}
+                            className={`group relative overflow-hidden px-14 py-7 rounded-[3rem] font-black text-xl uppercase tracking-[0.2em] shadow-2xl active:translate-y-1 transition-all w-full max-w-md ${loading ? 'bg-gray-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'}`}
                         >
-                            <div className="relative flex items-center justify-center gap-4">
-                                {loading ? (
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        <span>INITIALIZING...</span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <span>{isExistingOutlet ? "CONTINUE JOURNEY" : "CREATE OUTLET"}</span>
-                                    </>
-                                )}
-                            </div>
+                            {loading ? "INITIALIZING..." : (isExistingOutlet ? "CONTINUE JOURNEY" : "CREATE OUTLET")}
                         </button>
-                        <p className="mt-4 text-xs font-bold text-gray-400 uppercase tracking-widest text-center">Step 1 of 4 • Account setup</p>
                     </div>
                 </form>
             </div>

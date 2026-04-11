@@ -1,9 +1,20 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/client";
-import { FiSave, FiRefreshCw, FiArrowLeft, FiCamera, FiArrowRight, FiPlus, FiEdit2, FiTrash2, FiSearch, FiUpload } from "react-icons/fi";
+import { FiSave, FiRefreshCw, FiArrowLeft, FiCamera, FiArrowRight, FiPlus, FiEdit2, FiTrash2, FiSearch, FiUpload, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
 import Breadcrumb from "../components/Breadcrumb";
+
+interface Addon {
+    name: string;
+    price: number;
+}
+
+interface Variant {
+    variantType?: string;
+    label: string;
+    price: number;
+}
 
 interface Dish {
     dishId: string;
@@ -17,6 +28,8 @@ interface Dish {
     generationCount?: number;
     pendingImageFile?: File;
     previewUrl?: string;
+    variants: Variant[];
+    addons: Addon[];
 }
 
 interface Category {
@@ -27,7 +40,7 @@ interface Category {
 }
 
 interface OutletData {
-    outletName: string;
+    storeName: string;
     logoUrl: string | null;
     currency?: string;
 }
@@ -58,18 +71,22 @@ export default function ManageMenu() {
     const [viewMode, setViewMode] = useState<'categories' | 'dishes'>(urlCategoryId ? 'dishes' : 'categories');
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(urlCategoryId || null);
 
-    // Sync state with URL
+    // Sync state with URL only when urlCategoryId changes
     useEffect(() => {
         if (urlCategoryId) {
-            setSelectedCategoryId(urlCategoryId);
-            setViewMode('dishes');
-            setDishPage(1);
-            setDishSearch("");
+            // Only reset if we are actually switching categories
+            if (selectedCategoryId !== urlCategoryId) {
+                console.log("Category changed from URL:", urlCategoryId);
+                setSelectedCategoryId(urlCategoryId);
+                setViewMode('dishes');
+                setDishPage(1);
+                setDishSearch("");
+            }
         } else {
             setSelectedCategoryId(null);
             setViewMode('categories');
         }
-    }, [urlCategoryId]);
+    }, [urlCategoryId, selectedCategoryId]);
     
     // Modal & Action State
     const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -95,24 +112,7 @@ export default function ManageMenu() {
     } | null>(null);
 
     const [draggingOverDishId, setDraggingOverDishId] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (outletUid) {
-            fetchOutletInfo();
-        }
-    }, [outletUid]);
-
-    useEffect(() => {
-        if (viewMode === 'categories') {
-            fetchCategories();
-        }
-    }, [viewMode, catSearch, catPage]);
-
-    useEffect(() => {
-        if (viewMode === 'dishes' && selectedCategoryId) {
-            fetchDishes();
-        }
-    }, [viewMode, selectedCategoryId, dishSearch, dishPage]);
+    const [expandedAddons, setExpandedAddons] = useState<Record<string, boolean>>({});
 
     const handleCatSearch = useCallback((val: string) => {
         setCatSearch(val);
@@ -124,7 +124,7 @@ export default function ManageMenu() {
         setDishPage(1);
     }, []);
 
-    const fetchOutletInfo = async () => {
+    const fetchOutletInfo = useCallback(async () => {
         try {
             const res = await api.get(`/outlets/${outletUid}/menu`);
             setOutlet(res.data.outlet);
@@ -133,9 +133,9 @@ export default function ManageMenu() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [outletUid]);
 
-    const fetchCategories = async () => {
+    const fetchCategories = useCallback(async () => {
         try {
             const res = await api.get(`/outlets/${outletUid}/categories`, {
                 params: { search: catSearch, page: catPage, limit: catLimit }
@@ -150,11 +150,13 @@ export default function ManageMenu() {
         } catch (error) {
             toast.error("Failed to load categories");
         }
-    };
+    }, [outletUid, catSearch, catPage, catLimit]);
 
-    const fetchDishes = async () => {
-        if (!selectedCategoryId) return;
+    const fetchDishes = useCallback(async () => {
+        if (!selectedCategoryId || !outletUid) return;
         setDishesLoading(true);
+        // Immediate scroll to top when page changes
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         try {
             console.log(`FETCHING DISHES: Page ${dishPage}, Limit ${dishLimit}`);
             const res = await api.get(`/outlets/${outletUid}/dishes`, {
@@ -170,15 +172,39 @@ export default function ManageMenu() {
                 total: res.data.total, 
                 page: res.data.page 
             });
-            setDishes(res.data.dishes);
-            setOriginalDishes(JSON.parse(JSON.stringify(res.data.dishes)));
+            setDishes(res.data.dishes.map((d: any) => ({
+                ...d,
+                addons: d.addons || []
+            })));
+            setOriginalDishes(JSON.parse(JSON.stringify(res.data.dishes.map((d: any) => ({
+                ...d,
+                addons: d.addons || []
+            })))));
             setTotalDishes(res.data.total);
         } catch (error) {
             toast.error("Failed to load dishes");
         } finally {
             setDishesLoading(false);
         }
-    };
+    }, [selectedCategoryId, outletUid, dishPage, dishLimit, dishSearch]);
+
+    useEffect(() => {
+        if (outletUid) {
+            fetchOutletInfo();
+        }
+    }, [outletUid, fetchOutletInfo]);
+
+    useEffect(() => {
+        if (viewMode === 'categories') {
+            fetchCategories();
+        }
+    }, [viewMode, fetchCategories]);
+
+    useEffect(() => {
+        if (viewMode === 'dishes' && selectedCategoryId) {
+            fetchDishes();
+        }
+    }, [viewMode, selectedCategoryId, fetchDishes]);
 
     const handleUpdateDish = (dishId: string, field: keyof Dish, value: any) => {
         setDishes(prev => prev.map(d => 
@@ -200,7 +226,10 @@ export default function ManageMenu() {
             const weightChanged = normalize(origDish.weight) !== normalize(currentDish.weight);
             const descChanged = normalize(origDish.description) !== normalize(currentDish.description);
 
-            return nameChanged || priceChanged || weightChanged || descChanged;
+            const variantsChanged = JSON.stringify(origDish.variants) !== JSON.stringify(currentDish.variants);
+            const addonsChanged = JSON.stringify(origDish.addons) !== JSON.stringify(currentDish.addons);
+
+            return nameChanged || priceChanged || weightChanged || descChanged || addonsChanged || variantsChanged;
         }
         return currentDish.requestId === 'manual' && !currentDish.dishId.startsWith('temp_');
     };
@@ -230,7 +259,9 @@ export default function ManageMenu() {
                 price: (dish.price as any) === "" ? 0 : Number(dish.price),
                 weight: dish.weight,
                 description: dish.description,
-                imageUrl: finalImageUrl
+                imageUrl: finalImageUrl,
+                addons: dish.addons,
+                variants: dish.variants
             };
 
             const res = await api.put(`/dishes/${dish.dishId}`, updatePayload);
@@ -371,23 +402,22 @@ export default function ManageMenu() {
         </div>
     );
 
-    const handleAddManualDish = async (catId: string) => {
+    const handleAddManualDish = async (catId: string, parentId?: string) => {
         try {
+            const isVariant = !!parentId;
             await api.post(`/outlets/${outletUid}/dishes`, {
                 categoryId: catId,
-                name: "New Dish",
+                name: isVariant ? "New Variant" : "New Dish",
                 price: 0,
-                description: ""
+                description: "",
+                isVariant: isVariant,
+                parentId: parentId || null,
+                variantLabel: isVariant ? "New" : null
             });
             
-            // Re-fetch to ensure sync with backend (especially for pagination)
-            if (dishPage === 1) {
-                fetchDishes();
-            } else {
-                setDishPage(1);
-            }
-            
-            toast.success("Dish added! Edit the details below.");
+            // Re-fetch to ensure sync
+            fetchDishes();
+            toast.success(isVariant ? "Variant added!" : "Dish added!");
         } catch (e) {
             toast.error("Failed to add dish");
         }
@@ -659,7 +689,14 @@ export default function ManageMenu() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:gap-8">
+                <div className="grid gap-4 md:gap-8 relative min-h-[400px]">
+                    {dishesLoading && (
+                        <div className="absolute inset-0 bg-slate-50/50 backdrop-blur-[2px] z-30 flex flex-col items-center justify-center rounded-[3rem] animate-in fade-in duration-300">
+                             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin shadow-2xl mb-4"></div>
+                             <p className="text-slate-900 font-black text-xs uppercase tracking-[0.3em] animate-pulse">Syncing Dishes...</p>
+                        </div>
+                    )}
+                    
                     {dishes.map((dish, dishIdx) => (
                         <div
                             key={dish.dishId}
@@ -757,11 +794,13 @@ export default function ManageMenu() {
                                 <div className="space-y-6">
                                     <div className="relative group/input">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest absolute -top-2 left-4 bg-white px-2 z-10 transition-colors group-focus-within/input:text-slate-900">Dish Name</label>
+                                        <div className="flex gap-2">
                                         <input
-                                            className="w-full p-4 md:p-5 border border-slate-100 bg-slate-50 focus:bg-white rounded-[1rem] md:rounded-[1.5rem] font-black text-slate-900 text-xl md:text-2xl focus:ring-4 focus:ring-slate-100 outline-none transition-all"
+                                            className="flex-1 p-4 md:p-5 border border-slate-100 bg-slate-50 focus:bg-white rounded-[1rem] md:rounded-[1.5rem] font-black text-slate-900 text-xl md:text-2xl focus:ring-4 focus:ring-slate-100 outline-none transition-all"
                                             value={dish.name}
                                             onChange={(e) => handleUpdateDish(dish.dishId, "name", e.target.value)}
                                         />
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
@@ -786,6 +825,179 @@ export default function ManageMenu() {
                                             />
                                         </div>
                                     </div>
+
+                                    {/* Variants Section */}
+                                    <div className="bg-slate-50/50 p-4 rounded-[1.5rem] border border-slate-100 space-y-4">
+                                        <div className="flex items-center justify-between px-1">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pricing Variants (Size/Prep)</span>
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    const newVariants = [...(dish.variants || []), { variantType: "", label: "", price: 0 }];
+                                                    handleUpdateDish(dish.dishId, "variants", newVariants);
+                                                }}
+                                                className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-800 transition-colors flex items-center gap-1"
+                                            >
+                                                <FiPlus /> Add Variant
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-2">
+                                            {(dish.variants || []).map((variant, vIdx) => (
+                                                <div key={vIdx} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
+                                                    <input
+                                                        placeholder="Type"
+                                                        className="w-[72px] shrink-0 p-3 border border-slate-100 bg-white rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-100"
+                                                        value={variant.variantType || ""}
+                                                        onChange={(e) => {
+                                                            const newVariants = [...dish.variants];
+                                                            newVariants[vIdx].variantType = e.target.value;
+                                                            handleUpdateDish(dish.dishId, "variants", newVariants);
+                                                        }}
+                                                    />
+                                                    <input
+                                                        placeholder="Label"
+                                                        className="flex-1 min-w-[60px] p-3 border border-slate-100 bg-white rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-100"
+                                                        value={variant.label}
+                                                        onChange={(e) => {
+                                                            const newVariants = [...dish.variants];
+                                                            newVariants[vIdx].label = e.target.value;
+                                                            handleUpdateDish(dish.dishId, "variants", newVariants);
+                                                        }}
+                                                    />
+                                                    <div className="w-24 relative shrink-0">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">{outlet?.currency}</span>
+                                                        <input
+                                                            placeholder="Price"
+                                                            type="number"
+                                                            className="w-full text-left p-3 pl-[1.6rem] border border-slate-100 bg-white rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-100"
+                                                            value={variant.price === 0 ? "" : variant.price}
+                                                            onChange={(e) => {
+                                                                const newVariants = [...dish.variants];
+                                                                newVariants[vIdx].price = parseFloat(e.target.value) || 0;
+                                                                handleUpdateDish(dish.dishId, "variants", newVariants);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => {
+                                                            const newVariants = [...dish.variants];
+                                                            newVariants.splice(vIdx, 1);
+                                                            handleUpdateDish(dish.dishId, "variants", newVariants);
+                                                        }}
+                                                        className="w-8 h-8 shrink-0 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors"
+                                                    >
+                                                        <FiX size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {(dish.variants || []).length === 0 && (
+                                                <p className="text-[9px] text-slate-300 font-bold uppercase text-center py-2 italic">No variants (Single Price Dish)</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Add-ons Section */}
+                                    {dish.addons.length > 0 || expandedAddons[dish.dishId] ? (
+                                        <div className="bg-slate-50/50 p-4 rounded-[1.5rem] border border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div className="flex items-center justify-between px-1">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Custom Add-ons</span>
+                                            </div>
+                                            
+                                            <div className="flex flex-wrap gap-2">
+                                                {dish.addons.map((addon, aIdx) => (
+                                                    <div key={aIdx} className="bg-white border border-slate-200 pl-3 pr-1 py-1 rounded-full flex items-center gap-2 shadow-sm animate-in zoom-in duration-300">
+                                                        <span className="text-xs font-bold text-slate-700">{addon.name}</span>
+                                                        <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{outlet?.currency}{addon.price}</span>
+                                                        <button 
+                                                            onClick={() => {
+                                                                const newAddons = [...dish.addons];
+                                                                newAddons.splice(aIdx, 1);
+                                                                handleUpdateDish(dish.dishId, "addons", newAddons);
+                                                            }}
+                                                            className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <FiX size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                
+                                                {/* Add-on Input */}
+                                                <div className="flex items-center gap-1 bg-slate-100/50 rounded-full pl-3 pr-1 py-1 group/add">
+                                                    <input 
+                                                        id={`addon-name-${dish.dishId}`}
+                                                        placeholder="Name (e.g. Cheese)"
+                                                        className="bg-transparent border-none outline-none text-xs font-bold text-slate-600 w-28 focus:w-32 transition-all placeholder:text-slate-300"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                document.getElementById(`addon-price-${dish.dishId}`)?.focus();
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="text-slate-300 font-bold border-l border-slate-200 pl-1">{outlet?.currency || '₹'}</span>
+                                                    <input 
+                                                        id={`addon-price-${dish.dishId}`}
+                                                        placeholder="Price"
+                                                        type="number"
+                                                        className="bg-transparent border-none outline-none text-xs font-bold text-slate-600 w-16 focus:w-20 transition-all placeholder:text-slate-300"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                const nameInput = document.getElementById(`addon-name-${dish.dishId}`) as HTMLInputElement;
+                                                                const priceInput = e.currentTarget;
+                                                                const name = nameInput.value.trim();
+                                                                const price = parseFloat(priceInput.value) || 0;
+                                                                
+                                                                if (name) {
+                                                                    handleUpdateDish(dish.dishId, "addons", [...dish.addons, { name, price }]);
+                                                                    nameInput.value = "";
+                                                                    priceInput.value = "";
+                                                                    nameInput.focus();
+                                                                    toast.success(`Add-on "${name}" added!`, { icon: '➕', duration: 1500 });
+                                                                } else {
+                                                                    toast.error("Please enter an add-on name");
+                                                                    nameInput.focus();
+                                                                }
+                                                            }
+                                                        }}
+                                                    />
+                                                    <button 
+                                                        onClick={() => {
+                                                            const nameInput = document.getElementById(`addon-name-${dish.dishId}`) as HTMLInputElement;
+                                                            const priceInput = document.getElementById(`addon-price-${dish.dishId}`) as HTMLInputElement;
+                                                            if (!nameInput || !priceInput) return;
+                                                            
+                                                            const name = nameInput.value.trim();
+                                                            const price = parseFloat(priceInput.value) || 0;
+                                                            
+                                                            if (name) {
+                                                                handleUpdateDish(dish.dishId, "addons", [...dish.addons, { name, price }]);
+                                                                nameInput.value = "";
+                                                                priceInput.value = "";
+                                                                nameInput.focus();
+                                                                toast.success(`Add-on "${name}" added!`, { icon: '➕', duration: 1500 });
+                                                            } else {
+                                                                toast.error("Please enter an add-on name");
+                                                                nameInput.focus();
+                                                            }
+                                                        }}
+                                                        className="bg-indigo-600 hover:bg-indigo-700 text-white p-1 rounded-full opacity-40 group-hover/add:opacity-100 transition-opacity active:scale-95 flex-shrink-0"
+                                                    >
+                                                        <FiPlus size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p className="text-[8px] font-bold text-slate-400 italic px-1">Tip: Add a name and price then press Enter or click +</p>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-end pt-0 animate-in fade-in duration-300">
+                                            <button 
+                                                onClick={() => setExpandedAddons(prev => ({ ...prev, [dish.dishId]: true }))}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 text-[10px] font-black uppercase tracking-widest transition-all border border-slate-100"
+                                            >
+                                                <FiPlus size={12} /> Add-on
+                                            </button>
+                                        </div>
+                                    )}
 
                                     <div className="relative group/input h-full">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest absolute -top-2 left-4 bg-white px-2 z-10 transition-colors group-focus-within/input:text-slate-900">Description</label>
@@ -831,13 +1043,6 @@ export default function ManageMenu() {
                         </div>
                     ))}
 
-                    {dishesLoading && (
-                        <div className="py-20 flex flex-col items-center justify-center space-y-4">
-                            <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-                            <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] animate-pulse">Syncing Dishes...</p>
-                        </div>
-                    )}
-                    
                     {!dishesLoading && dishes.length === 0 && (
                         <div className="py-20 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
                             <FiPlus className="text-slate-300 mb-4" size={48} />
@@ -851,19 +1056,34 @@ export default function ManageMenu() {
 
                 {/* Pagination for Dishes */}
                 {totalDishes > dishLimit && (
-                    <div className="flex items-center justify-center gap-4 mt-8">
+                    <div className="flex items-center justify-center gap-4 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative z-50">
                         <button 
-                            disabled={dishPage === 1}
-                            onClick={() =>setDishPage(prev => prev - 1)}
-                            className="p-4 bg-white rounded-2xl shadow-lg border border-slate-100 disabled:opacity-30 active:scale-90 transition-all font-black"
+                            type="button"
+                            disabled={dishPage === 1 || dishesLoading}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log("PREV CLICKED, current page:", dishPage);
+                                setDishPage(prev => Math.max(1, prev - 1));
+                            }}
+                            className="p-4 bg-white rounded-2xl shadow-lg border border-slate-100 disabled:opacity-30 active:scale-90 transition-all font-black hover:bg-slate-50 cursor-pointer pointer-events-auto"
                         >
                             <FiArrowLeft />
                         </button>
-                        <span className="font-black text-slate-900">Page {dishPage} of {Math.ceil(totalDishes/dishLimit)}</span>
+                        <div className="px-6 py-3 bg-white rounded-xl shadow-sm border border-slate-50 flex flex-col items-center">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Page</span>
+                            <span className="font-black text-slate-900 text-sm leading-none tabular-nums">{dishPage} <span className="text-slate-300">/</span> {Math.ceil(totalDishes/dishLimit)}</span>
+                        </div>
                         <button 
-                            disabled={dishPage >= Math.ceil(totalDishes/dishLimit)}
-                            onClick={() => setDishPage(prev => prev + 1)}
-                            className="p-4 bg-white rounded-2xl shadow-lg border border-slate-100 disabled:opacity-30 active:scale-90 transition-all font-black"
+                            type="button"
+                            disabled={dishPage >= Math.ceil(totalDishes/dishLimit) || dishesLoading}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log("NEXT CLICKED, current page:", dishPage);
+                                setDishPage(prev => prev + 1);
+                            }}
+                            className="p-4 bg-white rounded-2xl shadow-lg border border-slate-100 disabled:opacity-30 active:scale-90 transition-all font-black hover:bg-slate-50 cursor-pointer pointer-events-auto"
                         >
                             <FiArrowRight />
                         </button>
@@ -893,15 +1113,15 @@ export default function ManageMenu() {
                     items={
                         viewMode === 'dishes' 
                         ? [
-                            { label: 'Business Profile', path: '/configure-outlets' },
-                            { label: 'Manage Outlets', path: '/view-outlets' },
-                            { label: outlet?.outletName || 'Menu', path: `/manage-menu/${outletUid}` },
+                            { label: 'Settings', path: '/configure-outlets' },
+                            { label: 'Your Outlets', path: '/view-outlets' },
+                            { label: outlet?.storeName || 'Menu', path: `/manage-menu/${outletUid}` },
                             { label: categories.find(c => c.categoryId === selectedCategoryId)?.categoryName || 'Dishes' }
                         ]
                         : [
-                            { label: 'Business Profile', path: '/configure-outlets' },
-                            { label: 'Manage Outlets', path: '/view-outlets' },
-                            { label: outlet?.outletName || 'Menu' }
+                            { label: 'Settings', path: '/configure-outlets' },
+                            { label: 'Your Outlets', path: '/view-outlets' },
+                            { label: outlet?.storeName || 'Menu' }
                         ]
                     } 
                 />

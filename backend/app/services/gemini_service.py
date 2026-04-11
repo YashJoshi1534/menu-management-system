@@ -28,7 +28,7 @@ async def generate_image_prompt(dish_name: str):
         return dish_name # Fallback to original
 
 MENU_PROMPT = """
-You are extracting a restaurant menu from an image.
+You are extracting a restaurant menu from an image. 
 
 Return JSON ONLY in this schema:
 
@@ -42,7 +42,13 @@ Return JSON ONLY in this schema:
           "price": number | null,
           "currency": string | null,
           "description": string | null,
-          "weight": string | null
+          "weight": string | null,
+          "variants": [
+             { "label": string (e.g. "Small", "With Butter"), "price": number, "variantType": string (e.g. "Size", "Type", "Preparation") }
+          ],
+          "addons": [
+             { "name": string (e.g. "Extra Cheese"), "price": number }
+          ]
         }
       ]
     }
@@ -51,24 +57,23 @@ Return JSON ONLY in this schema:
 
 Rules:
 - Extract ALL visible menu items grouped by their category.
+- **Table / Column Format Menus**: If a menu lists dishes as rows and prices in columns headers (e.g. "Oil", "Butter", or "S", "M", "L"):
+    - Extract the dish name (e.g., "Sada Dosa").
+    - Put the different prices under the `variants` array as `{"variantType": "Type", "label": "Oil", "price": 90}`.
+    - Set the main `price` field to `null` or `0` if there isn't a single default price.
+- **Add-ons**: Extras or customizations (e.g., "+ Cheese: 50") go in the `addons` array.
 - If no category is visible, use "General" or "Uncategorized".
-- Do NOT guess missing values.
-- Use null if value not visible.
+- Do NOT guess missing values. Use `null` if value not visible.
 - Preserve original language.
-- Prices may appear anywhere near the item.
 - Return ONLY valid JSON.
 """
 
-async def extract_menu_data(image_path: str):
+async def extract_menu_data(img_bytes: bytes):
     """
-    Sends image to Gemini and returns extracted JSON.
+    Sends image bytes to Gemini and returns extracted JSON.
     """
-    print(f"DEBUG: Starting extraction for {image_path} using {MODEL_NAME}")
     try:
-        with open(image_path, "rb") as f:
-            img_bytes = f.read()
-        
-        logger.info(f"Image read successfully, size: {len(img_bytes)} bytes")
+        logger.info(f"Image received for extraction, size: {len(img_bytes)} bytes")
 
         response = client.models.generate_content(
             model=MODEL_NAME,

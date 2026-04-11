@@ -232,14 +232,14 @@ export default function ViewOutlets() {
                 <div className="space-y-4 pt-4 pb-12 animate-in fade-in duration-700 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     {/* Proper Breadcrumb */}
                     <Breadcrumb
-                        items={[{ label: 'Business Profile', path: '/configure-outlets' }, { label: window.location.pathname.includes('manage-menu') ? 'Manage Menu' : 'Manage Outlets' }]}
+                        items={[{ label: 'Settings', path: '/configure-outlets' }, { label: window.location.pathname.includes('manage-menu') ? 'Manage Menu' : 'Your Outlets' }]}
                     />
 
                     {/* Header with Add New Store Button */}
                     <div className="flex items-center justify-between gap-4 mb-4">
                         <div className="flex items-center gap-4">
                             <h1 className="text-3xl font-black text-gray-900 tracking-tight">
-                                {window.location.pathname.includes('manage-menu') ? 'Manage Menu' : 'Manage Outlets'}
+                                {window.location.pathname.includes('manage-menu') ? 'Manage Menu' : 'Your Outlets'}
                             </h1>
                             {window.location.pathname.includes('manage-menu') && (
                                 <p className="text-gray-500 mt-1 font-medium px-1">Select an outlet to manage its categories and dishes</p>
@@ -247,43 +247,38 @@ export default function ViewOutlets() {
                         </div>
 
                         {!window.location.pathname.includes('manage-menu') && (
-                            <button
-                                onClick={() => {
-                                    setSelectedOutletUid(null);
-                                    // Clear setup specific localStorage
-                                    localStorage.removeItem("outlet_setup_name");
-                                    localStorage.removeItem("outlet_setup_address");
-                                    localStorage.removeItem("outlet_setup_city");
-                                    localStorage.removeItem("outlet_setup_zip");
-                                    localStorage.removeItem("outlet_setup_lat");
-                                    localStorage.removeItem("outlet_setup_lng");
-                                    navigate("/outlet-setup");
-                                }}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center gap-2"
-                            >
-                                <FiPlus size={20} /> Add New Store
-                            </button>
+                            <div className="flex items-center gap-4">
+                                <div className="relative w-full sm:w-64 group">
+                                    <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search outlets..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 hover:border-indigo-300 focus:border-indigo-600 rounded-2xl outline-none transition-all shadow-sm text-sm font-medium"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setSelectedOutletUid(null);
+                                        // Clear setup specific localStorage
+                                        localStorage.removeItem("outlet_setup_name");
+                                        localStorage.removeItem("outlet_setup_address");
+                                        localStorage.removeItem("outlet_setup_city");
+                                        localStorage.removeItem("outlet_setup_zip");
+                                        localStorage.removeItem("outlet_setup_lat");
+                                        localStorage.removeItem("outlet_setup_lng");
+                                        navigate("/outlet-setup");
+                                    }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black shadow-xl hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <FiPlus size={20} /> Add Outlet
+                                </button>
+                            </div>
                         )}
                     </div>
 
-                    {/* Search and Add Button Area */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white/40 backdrop-blur-md p-6 rounded-[2.5rem] border border-white/60 shadow-sm">
-                        <div className="flex flex-col gap-1">
-                            <h2 className="text-xl font-black text-gray-900 tracking-tight px-2">Outlet List</h2>
-                        </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
-                            <div className="relative w-full sm:w-80 group">
-                                <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
-                                <input
-                                    type="text"
-                                    placeholder="Search outlets..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 hover:border-indigo-300 focus:border-indigo-600 rounded-2xl outline-none transition-all shadow-sm text-sm font-medium"
-                                />
-                            </div>
-                        </div>
-                    </div>
+
 
                     <div className="relative min-h-[400px]">
                         {loadingOutlets && (

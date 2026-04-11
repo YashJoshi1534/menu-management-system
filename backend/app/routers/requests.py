@@ -3,6 +3,7 @@ from typing import List
 from app.database import requests_collection, dishes_collection, outlet_profiles_collection, categories_collection, admin_config_collection, business_config_collection
 from app.models import RequestDB, DishDB, CategoryDB, AdminConfigDB
 from app.services.gemini_service import extract_menu_data
+from app.services.cloudinary_service import upload_image
 from app.logger import get_logger
 import uuid
 
@@ -76,19 +77,19 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
             detail=f"Maximum {config.maxImagesPerUpload} images allowed per upload."
         )
 
-    UPLOAD_DIR = f"uploads/{request_id}"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
     extracted_dishes = []
     
     for idx, img in enumerate(images):
         logger.info(f"Processing image {idx+1}/{len(images)}: {img.filename}")
-        file_path = os.path.join(UPLOAD_DIR, img.filename)
-        with open(file_path, "wb") as f:
-            f.write(await img.read())
+        img_bytes = await img.read()
+        
+        # Upload to Cloudinary
+        folder_path = f"requests/{request_id}/menu_images"
+        public_id = f"img_{uuid.uuid4().hex[:8]}"
+        cloudinary_url = upload_image(img_bytes, folder=folder_path, public_id=public_id)
 
         # Call Gemini
-        data = await extract_menu_data(file_path)
+        data = await extract_menu_data(img_bytes)
         
         if data and "categories" in data:
             for cat in data["categories"]:
@@ -106,28 +107,51 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
 
                 # Create Dishes in this Category
                 for item in cat.get("items", []):
-                    dish_id = f"dish_{uuid.uuid4().hex[:8]}"
+                    parent_dish_id = f"dish_{uuid.uuid4().hex[:8]}"
                     
-                    # Sanitize price
-                    price_val = item.get("price")
-                    if isinstance(price_val, str):
-                       try:
-                           price_val = float(price_val.replace("$", "").replace(",", "")) 
-                       except:
-                           price_val = 0.0
+                    # Sanitize price helper
+                    def sanitize_price(p):
+                        if isinstance(p, str):
+                            try:
+                                return float(p.replace("$", "").replace(",", "")) 
+                            except:
+                                return 0.0
+                        return float(p) if p is not None else 0.0
 
+                    base_price = sanitize_price(item.get("price"))
+                    
+                    # Prepare Variants & Addons
+                    extracted_variants = []
+                    for var in item.get("variants", []):
+                        extracted_variants.append({
+                            "variantType": var.get("variantType"),
+                            "label": var.get("label", "Variant"),
+                            "price": sanitize_price(var.get("price"))
+                        })
+
+                    extracted_addons = []
+                    for ad in item.get("addons", []):
+                        extracted_addons.append({
+                            "name": ad.get("name", "Extra"),
+                            "price": sanitize_price(ad.get("price"))
+                        })
+
+                    # Create Parent Dish
                     new_dish = DishDB(
-                        dishId=dish_id,
+                        dishId=parent_dish_id,
                         requestId=request_id,
                         storeUid=req["storeUid"],
-                        categoryId=cat_id, # Link to Category
+                        categoryId=cat_id,
                         name=item.get("name", "Unknown Dish"),
-                        price=price_val,
-                        weight=item.get("weight"),       # New Field
-                        description=item.get("description"), # New Field
-                        imageIndex=idx
+                        price=base_price,
+                        weight=item.get("weight"),
+                        description=item.get("description"),
+                        imageUrl=None, 
+                        imageStatus="pending",
+                        imageIndex=idx,
+                        variants=extracted_variants,
+                        addons=extracted_addons
                     )
-                    
                     extracted_dishes.append(new_dish.dict())
 
     if extracted_dishes:
@@ -136,10 +160,10 @@ async def upload_menu_images(request_id: str, images: List[UploadFile] = File(..
     # Update Request Step
     await requests_collection.update_one(
         {"requestId": request_id},
-        {"$set": {"currentStep": 2}}
+        {"$set": {"currentStep": 3}}
     )
 
-    return {"currentStep": 2, "totalDishes": len(extracted_dishes)}
+    return {"currentStep": 3, "totalDishes": len(extracted_dishes)}
 
 @router.get("/outlets/{store_uid}/requests/active", response_model=dict)
 async def get_active_request(store_uid: str):
@@ -185,3 +209,24 @@ async def publish_request(request_id: str):
     )
     
     return {"status": "success", "message": "Menu successfully generated and published"}
+
+@router.delete("/requests/{request_id}", response_model=dict)
+async def delete_request(request_id: str):
+    logger.info(f"Soft deleting request {request_id}")
+    
+    # 1. Verify existence
+    req = await requests_collection.find_one({"requestId": request_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # 2. Mark request as cancelled (Soft Delete)
+    await requests_collection.update_one(
+        {"requestId": request_id},
+        {"$set": {"status": "cancelled", "currentStep": 0}}
+    )
+    
+    # 3. Hard delete associated dishes/categories (to keep UI clean)
+    await dishes_collection.delete_many({"requestId": request_id})
+    await categories_collection.delete_many({"requestId": request_id})
+    
+    return {"status": "success", "message": f"Process {request_id} cancelled and cleaned up"}

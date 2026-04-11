@@ -97,6 +97,15 @@ class CategoryDB(BaseModel):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
+class Variant(BaseModel):
+    variantType: Optional[str] = None
+    label: str
+    price: float
+
+class Addon(BaseModel):
+    name: str
+    price: float
+
 # --- Dish Models ---
 class DishDB(BaseModel):
     dishId: str
@@ -112,6 +121,8 @@ class DishDB(BaseModel):
     imageStatus: str = "pending"  # "pending", "generating", "ready", "failed"
     imageIndex: int
     isPublished: bool = False
+    variants: List[Variant] = []
+    addons: List[Addon] = []
     generationCount: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)

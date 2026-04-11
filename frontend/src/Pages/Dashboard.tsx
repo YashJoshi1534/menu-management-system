@@ -144,7 +144,7 @@ export default function Dashboard() {
                     </div>
                     <div className="mt-auto">
                         <h5 className="text-sm font-black text-blue-400 group-hover:text-white/80 transition-colors uppercase tracking-widest">Quick Access</h5>
-                        <h6 className="text-xl font-bold text-white mt-1">Manage Outlets & QR Codes</h6>
+                        <h6 className="text-xl font-bold text-white mt-1">Your Outlets & QR Codes</h6>
                     </div>
                 </button>
             </div>

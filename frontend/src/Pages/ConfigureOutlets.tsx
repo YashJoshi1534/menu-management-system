@@ -80,10 +80,10 @@ export default function ConfigureOutlets() {
             return toast.error("Business Name is required");
         }
         if (!businessForm.contactName?.trim()) {
-            return toast.error("Contact Person is required");
+            return toast.error("Owner Name is required");
         }
         if (!businessForm.phone?.trim()) {
-            return toast.error("Business Phone is required");
+            return toast.error("Owner Number is required");
         }
         if (businessForm.phone.length !== 10) {
             return toast.error("Phone number must be exactly 10 digits");
@@ -209,8 +209,8 @@ export default function ConfigureOutlets() {
                             {[
                                 { label: "Business Name", value: businessForm?.name, icon: <FiBriefcase />, field: "name", required: true },
                                 { label: "Email Address", value: businessForm?.email, icon: <FiMail />, field: "email", disabled: true },
-                                { label: "Contact Person", value: businessForm?.contactName, icon: <FiUser />, field: "contactName", required: true },
-                                { label: "Business Phone", value: businessForm?.phone ? `+91 ${businessForm.phone}` : "Not Set", icon: <FiPhone />, field: "phone", required: true },
+                                { label: "Owner Name", value: businessForm?.contactName, icon: <FiUser />, field: "contactName", required: true },
+                                { label: "Owner Number", value: businessForm?.phone ? `+91 ${businessForm.phone}` : "Not Set", icon: <FiPhone />, field: "phone", required: true },
                                 { label: "Business Type", value: businessForm?.businessType || "Not Set", icon: <FiTag />, field: "businessType", isSelect: true, required: true },
                             ].map((item, idx) => (
                                 <div key={idx} className={`space-y-3 group ${item.disabled ? 'opacity-70' : ''}`}>
@@ -287,7 +287,7 @@ export default function ConfigureOutlets() {
     return (
         <div className="min-h-[calc(100vh-76px)] bg-gray-50 p-0 md:p-8 relative overflow-y-auto animate-in fade-in duration-500 scrollbar-hide">
             <div className="max-w-6xl mx-auto pt-4 pb-12 px-4 space-y-4">
-                <Breadcrumb items={[{ label: 'Business Profile' }]} />
+                <Breadcrumb items={[{ label: 'Settings' }]} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                     {/* Outlets Overview Card */}
                     <div className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-10 group hover:-translate-y-1 transition-all duration-500 min-h-[480px] flex flex-col items-center text-center">
@@ -318,7 +318,7 @@ export default function ConfigureOutlets() {
                         <div className="w-20 h-20 rounded-3xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm mb-10 group-hover:scale-110 transition-transform">
                             <FiBriefcase size={32} />
                         </div>
-                        <h3 className="text-4xl font-black text-gray-900 mb-4 tracking-tighter">Business Detail</h3>
+                        <h3 className="text-4xl font-black text-gray-900 mb-4 tracking-tighter">Business Profile</h3>
                         <p className="text-gray-500 text-lg mb-10 leading-relaxed max-w-sm">
                             Update your business information and contact details.
                         </p>
@@ -331,7 +331,7 @@ export default function ConfigureOutlets() {
                             onClick={() => setIsBusinessModalOpen(true)}
                             className="mt-auto w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 active:scale-95"
                         >
-                            View Business Detail <FiArrowRight />
+                            View Business Profile <FiArrowRight />
                         </button>
                     </div>
                 </div>

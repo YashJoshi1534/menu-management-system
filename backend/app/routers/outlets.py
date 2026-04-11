@@ -109,7 +109,7 @@ async def get_business_outlets(
     total = await outlet_profiles_collection.count_documents(query)
     skip = (page - 1) * limit
     
-    cursor = outlet_profiles_collection.find(query, {"_id": 0}).skip(skip).limit(limit)
+    cursor = outlet_profiles_collection.find(query, {"_id": 0}).sort("createdAt", -1).skip(skip).limit(limit)
     outlets = []
     async for outlet in cursor:
         outlets.append(outlet)

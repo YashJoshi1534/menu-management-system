@@ -1,10 +1,16 @@
-import { FiImage, FiChevronRight, FiLoader, FiEdit2, FiX } from "react-icons/fi";
+import { FiImage, FiChevronRight, FiLoader, FiEdit2, FiX, FiPlus } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
 import ProgressBar from "../components/ProgressBar";
+
+interface Variant {
+    variantType?: string;
+    label: string;
+    price: number;
+}
 
 interface Dish {
     dishId: string;
@@ -16,6 +22,7 @@ interface Dish {
     imageStatus: "pending" | "generating" | "ready" | "failed";
     generationCount?: number;
     categoryName?: string;
+    variants: Variant[];
 }
 
 export default function DishGeneration() {
@@ -24,8 +31,6 @@ export default function DishGeneration() {
     const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
-    // const [generateAllProgress, setGenerateAllProgress] = useState(0);
-    // const [isGeneratingAll, setIsGeneratingAll] = useState(false);
     const [generationLimit, setGenerationLimit] = useState(1);
     const [outletCurrency, setOutletCurrency] = useState("₹");
     const navigate = useNavigate();
@@ -35,7 +40,14 @@ export default function DishGeneration() {
 
     // Edit Mode State
     const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState({ name: "", price: "", weight: "", description: "", categoryName: "" });
+    const [editForm, setEditForm] = useState({ 
+        name: "", 
+        price: "", 
+        weight: "", 
+        description: "", 
+        categoryName: "",
+        variants: [] as Variant[]
+    });
 
     useEffect(() => {
         const id = localStorage.getItem("requestId");
@@ -46,11 +58,10 @@ export default function DishGeneration() {
         setRequestId(id);
         fetchDish(id, 1);
 
-        if (selectedOutletUid && business?.businessId) {
-            api.get(`/businesses/${business.businessId}/outlets`)
+        if (selectedOutletUid) {
+            api.get(`/outlets/${selectedOutletUid}/menu`)
                 .then(res => {
-                    const outlet = res.data.outlets.find((o: any) => o.storeUid === selectedOutletUid);
-                    if (outlet) setOutletName(outlet.storeName);
+                    if (res.data?.outlet?.storeName) setOutletName(res.data.outlet.storeName);
                 })
                 .catch(err => console.error("Failed to fetch outlet name", err));
         }
@@ -72,7 +83,8 @@ export default function DishGeneration() {
                     price: res.data.dish.price?.toString() || "",
                     weight: res.data.dish.weight || "",
                     description: res.data.dish.description || "",
-                    categoryName: res.data.dish.categoryName || ""
+                    categoryName: res.data.dish.categoryName || "",
+                    variants: res.data.dish.variants || []
                 });
             }
         } catch (e) {
@@ -99,32 +111,6 @@ export default function DishGeneration() {
         }
     };
 
-    // const handleGenerateAll = async () => {
-    //     if (!requestId) return;
-    //     setIsGeneratingAll(true);
-    //     setGenerateAllProgress(0);
-
-    //     try {
-    //         let generatedCount = 0;
-    //         for (let p = 1; p <= totalPages; p++) {
-    //             const pRes = await api.get(`/requests/${requestId}/dishes?page=${p}&limit=1`);
-    //             const d = pRes.data.dish;
-    //             const limit = pRes.data.generationLimit || 1;
-
-    //             if (d && d.imageStatus !== 'ready' && (d.generationCount || 0) < limit) {
-    //                 await api.post(`/requests/${requestId}/generate-image/${d.dishId}`);
-    //             }
-    //             generatedCount++;
-    //             setGenerateAllProgress(Math.round((generatedCount / totalPages) * 100));
-    //         }
-    //         toast.success("All Images Generated!");
-    //         fetchDish(requestId, page);
-    //     } catch (e) {
-    //         toast.error("Bulk generation stopped");
-    //     } finally {
-    //         setIsGeneratingAll(false);
-    //     }
-    // };
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showResetModal, setShowResetModal] = useState(false);
 
@@ -148,6 +134,10 @@ export default function DishGeneration() {
         }
 
         try {
+            if (requestId && !requestId.startsWith('temp_')) {
+                await api.delete(`/requests/${requestId}`);
+            }
+
             const res = await api.post(`/outlets/${selectedOutletUid}/requests`);
             if (res.data.requestId) {
                 localStorage.setItem("requestId", res.data.requestId);
@@ -173,7 +163,8 @@ export default function DishGeneration() {
                 categoryName: editForm.categoryName,
                 price: parseFloat(editForm.price),
                 weight: editForm.weight,
-                description: editForm.description
+                description: editForm.description,
+                variants: editForm.variants
             });
             setIsEditing(false);
             toast.success("Saved!");
@@ -309,15 +300,8 @@ export default function DishGeneration() {
                                 <div className="w-full md:w-1/2 p-8 md:p-14 flex flex-col gap-8 md:gap-12 bg-white relative justify-center">
                                     <div className="space-y-8">
                                         <div className="flex items-start justify-between">
-                                            <div className="flex flex-col gap-3">
-                                                {dish?.categoryName && (
-                                                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-5 py-2.5 rounded-full tracking-[0.15em] uppercase w-fit whitespace-nowrap">
-                                                        {dish.categoryName}
-                                                    </span>
-                                                )}
-                                                <span className="text-[10px] font-black text-gray-300 tracking-[0.25em] uppercase ml-1">
-                                                    Dish Review
-                                                </span>
+                                            <div className="flex flex-col gap-3 min-h-[10px]">
+                                                {/* Header area cleaned up as per user request */}
                                             </div>
                                             <div className="flex gap-3">
                                                 {!isEditing && (
@@ -329,7 +313,8 @@ export default function DishGeneration() {
                                                                 price: dish?.price?.toString() || "",
                                                                 weight: dish?.weight || "",
                                                                 description: dish?.description || "",
-                                                                categoryName: dish?.categoryName || ""
+                                                                categoryName: dish?.categoryName || "",
+                                                                variants: dish?.variants || []
                                                             });
                                                         }} className="w-12 h-12 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-2xl flex items-center justify-center border border-gray-100 active:scale-95 transition-all shadow-sm">
                                                             <FiEdit2 size={20} />
@@ -390,6 +375,67 @@ export default function DishGeneration() {
                                                         onChange={e => setEditForm({ ...editForm, description: e.target.value })}
                                                     />
                                                 </div>
+
+                                                {/* Variants Editor */}
+                                                <div className="pt-2 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Variants</label>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setEditForm({ ...editForm, variants: [...editForm.variants, { variantType: "", label: "", price: 0 }] })}
+                                                            className="text-blue-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1"
+                                                        >
+                                                            <FiPlus /> Add Variant
+                                                        </button>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {editForm.variants.map((v, idx) => (
+                                                            <div key={idx} className="flex gap-2 items-center">
+                                                                <input 
+                                                                    placeholder="Type"
+                                                                    className="w-[72px] shrink-0 bg-white border border-gray-100 p-3 rounded-xl text-xs font-bold"
+                                                                    value={v.variantType || ""}
+                                                                    onChange={e => {
+                                                                        const newVars = [...editForm.variants];
+                                                                        newVars[idx].variantType = e.target.value;
+                                                                        setEditForm({ ...editForm, variants: newVars });
+                                                                    }}
+                                                                />
+                                                                <input 
+                                                                    placeholder="Size/Desc"
+                                                                    className="flex-1 min-w-[60px] bg-white border border-gray-100 p-3 rounded-xl text-xs font-bold"
+                                                                    value={v.label}
+                                                                    onChange={e => {
+                                                                        const newVars = [...editForm.variants];
+                                                                        newVars[idx].label = e.target.value;
+                                                                        setEditForm({ ...editForm, variants: newVars });
+                                                                    }}
+                                                                />
+                                                                <div className="w-24 relative shrink-0">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-[10px]">{outletCurrency || '₹'}</span>
+                                                                    <input 
+                                                                        placeholder="Price"
+                                                                        type="number"
+                                                                        className="w-full text-left p-3 pl-[1.6rem] bg-white border border-gray-100 rounded-xl text-xs font-bold"
+                                                                        value={v.price === 0 ? "" : v.price}
+                                                                        onChange={e => {
+                                                                            const newVars = [...editForm.variants];
+                                                                            newVars[idx].price = parseFloat(e.target.value) || 0;
+                                                                            setEditForm({ ...editForm, variants: newVars });
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => setEditForm({ ...editForm, variants: editForm.variants.filter((_, i) => i !== idx) })}
+                                                                    className="p-2 shrink-0 text-red-400"
+                                                                >
+                                                                    <FiX size={14} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                                 <div className="flex gap-4 pt-2">
                                                     <button onClick={saveEdit} className="bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl text-[10px] uppercase font-black tracking-[0.2em] flex-1 active:scale-95 transition-all shadow-xl shadow-green-500/20">SAVE CHANGES</button>
                                                     <button onClick={() => setIsEditing(false)} className="bg-white border border-gray-100 hover:bg-gray-50 text-gray-400 py-4 rounded-2xl text-[10px] uppercase font-black tracking-[0.2em] flex-1 active:scale-95 transition-all">CANCEL</button>
@@ -398,15 +444,47 @@ export default function DishGeneration() {
                                         ) : (
                                             <div className="space-y-6 animate-in zoom-in-95 duration-500">
                                                 <div className="space-y-3">
-                                                    <h1 className="text-3xl lg:text-6xl font-[1000] text-gray-900 tracking-tighter leading-tight transition-all">{dish?.name || "..." }</h1>
-                                                    <div className="flex gap-4 items-center text-2xl lg:text-5xl text-blue-600 font-[1000] tracking-tighter">
-                                                        <span>{outletCurrency}{dish?.price || "0"}</span>
-                                                        {dish?.weight && <span className="text-gray-300 text-2xl font-bold tracking-normal italic ml-2">/ {dish?.weight}</span>}
+                                                    <h1 className="text-3xl lg:text-6xl font-[1000] text-gray-900 tracking-tighter leading-tight transition-all">
+                                                        {dish?.name || "NA"}
+                                                    </h1>
+                                                    
+                                                    <div className="flex flex-wrap gap-8 items-end pt-2">
+                                                        <div className="flex flex-col gap-1">
+                                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Price</label>
+                                                            <span className="text-2xl lg:text-5xl text-blue-600 font-[1000] tracking-tighter leading-none">
+                                                                {dish?.price && dish.price > 0 ? `${outletCurrency}${dish.price}` : "NA"}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Weight</label>
+                                                            <span className="text-xl lg:text-3xl text-gray-400 font-extrabold tracking-tighter leading-none opacity-40">
+                                                                {dish?.weight || "NA"}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="relative">
-                                                    <div className="absolute left-0 top-0 w-1 h-full bg-blue-50 rounded-full"></div>
-                                                    <p className="pl-6 text-gray-500 text-xl md:text-2xl leading-relaxed font-medium italic opacity-80">"{dish?.description}"</p>
+                                                
+                                                {/* Variants Display */}
+                                                {(dish?.variants || []).length > 0 && (
+                                                    <div className="space-y-3 pt-2">
+                                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Variants</label>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {dish?.variants.map((v, i) => (
+                                                                <div key={i} className="bg-blue-50 border border-blue-100 px-4 py-2 rounded-2xl flex items-center gap-3">
+                                                                    <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">{v.variantType ? `${v.variantType}: ` : ""}{v.label}</span>
+                                                                    <span className="text-sm font-black text-blue-400 leading-none">{outletCurrency}{v.price}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="space-y-4 pt-2">
+                                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Description</label>
+                                                    <div className="relative">
+                                                        <div className="absolute left-0 top-0 w-1.5 h-full bg-blue-100/50 rounded-full"></div>
+                                                        <p className="pl-6 text-gray-500 text-xl md:text-2xl leading-relaxed font-medium italic opacity-80">"{dish?.description || "NA"}"</p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
