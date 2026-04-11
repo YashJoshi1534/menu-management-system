@@ -94,6 +94,7 @@ class CategoryDB(BaseModel):
     requestId: str
     name: str
     isPublished: bool = False
+    order: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -121,6 +122,7 @@ class DishDB(BaseModel):
     imageStatus: str = "pending"  # "pending", "generating", "ready", "failed"
     imageIndex: int
     isPublished: bool = False
+    order: int = 0
     variants: List[Variant] = []
     addons: List[Addon] = []
     generationCount: int = 0

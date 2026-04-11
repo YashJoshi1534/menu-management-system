@@ -4,6 +4,28 @@ import api from "../api/client";
 import { FiSave, FiRefreshCw, FiArrowLeft, FiCamera, FiArrowRight, FiPlus, FiEdit2, FiTrash2, FiSearch, FiUpload, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
 import Breadcrumb from "../components/Breadcrumb";
+import type { DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableItemWrapper({ id, disabled, children }: { id: string, disabled?: boolean, children: React.ReactNode }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : 'auto',
+        position: 'relative' as const,
+        opacity: isDragging ? 0.8 : 1,
+    };
+    return (
+        <div ref={setNodeRef} style={style} {...attributes}>
+            <div className={`relative h-full ${!disabled ? 'cursor-grab active:cursor-grabbing' : ''}`} {...(!disabled ? listeners : {})}>
+                 {children}
+            </div>
+        </div>
+    );
+}
 
 interface Addon {
     name: string;
@@ -114,6 +136,14 @@ export default function ManageMenu() {
     const [draggingOverDishId, setDraggingOverDishId] = useState<string | null>(null);
     const [expandedAddons, setExpandedAddons] = useState<Record<string, boolean>>({});
 
+    const [isReorderingCats, setIsReorderingCats] = useState(false);
+    const [isReorderingDishes, setIsReorderingDishes] = useState(false);
+    
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
+
     const handleCatSearch = useCallback((val: string) => {
         setCatSearch(val);
         setCatPage(1);
@@ -123,6 +153,93 @@ export default function ManageMenu() {
         setDishSearch(val);
         setDishPage(1);
     }, []);
+
+    const toggleReorderCats = async () => {
+        if (isReorderingCats) {
+            try {
+                setIsSaving(true);
+                const items = categories.map((c, i) => ({ id: c.categoryId, order: i }));
+                await api.put(`/outlets/${outletUid}/categories/reorder`, items);
+                toast.success("Category order saved!");
+            } catch (e) {
+                toast.error("Failed to save order");
+            } finally {
+                setIsSaving(false);
+            }
+            setIsReorderingCats(false);
+            fetchCategories(); // will fetch normally
+        } else {
+            try {
+                setLoading(true);
+                const res = await api.get(`/outlets/${outletUid}/categories`, {
+                    params: { search: catSearch, page: 1, limit: -1 }
+                });
+                setCategories(res.data.categories.map((c: any) => ({
+                    categoryId: c.categoryId,
+                    categoryName: c.name || c.categoryName,
+                    isPublished: c.isPublished !== false,
+                    dishCount: c.dishCount || 0
+                })));
+                setIsReorderingCats(true);
+            } catch (e) {
+                toast.error("Failed to enter reorder mode");
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    const handleDragEndCategories = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            setCategories((items) => {
+                const oldIndex = items.findIndex((i) => i.categoryId === active.id);
+                const newIndex = items.findIndex((i) => i.categoryId === over.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
+
+    const toggleReorderDishes = async () => {
+        if (isReorderingDishes) {
+            try {
+                setIsSaving(true);
+                const items = dishes.map((d, i) => ({ id: d.dishId, order: i }));
+                await api.put(`/outlets/${outletUid}/dishes/reorder`, items);
+                toast.success("Dish order saved!");
+            } catch (e) {
+                toast.error("Failed to save order");
+            } finally {
+                setIsSaving(false);
+            }
+            setIsReorderingDishes(false);
+            fetchDishes();
+        } else {
+            try {
+                setDishesLoading(true);
+                const res = await api.get(`/outlets/${outletUid}/dishes`, {
+                    params: { categoryId: selectedCategoryId, search: dishSearch, page: 1, limit: -1 }
+                });
+                setDishes(res.data.dishes.map((d: any) => ({ ...d, addons: d.addons || [] })));
+                setIsReorderingDishes(true);
+            } catch (e) {
+                toast.error("Failed to enter reorder mode");
+            } finally {
+                setDishesLoading(false);
+            }
+        }
+    };
+
+    const handleDragEndDishes = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            setDishes((items) => {
+                const oldIndex = items.findIndex((i) => i.dishId === active.id);
+                const newIndex = items.findIndex((i) => i.dishId === over.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
 
     const fetchOutletInfo = useCallback(async () => {
         try {
@@ -556,86 +673,103 @@ export default function ManageMenu() {
                             onSearch={handleCatSearch}
                          />
                     </div>
-                    <button
-                        onClick={() => {
-                            setEditingCategory(null);
-                            setNewCategoryName("");
-                            setNewCategoryPublished(true);
-                            setIsCategoryModalOpen(true);
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer"
-                    >
-                        <FiPlus size={20} /> Add Category
-                    </button>
+                    <div className="flex gap-4 w-full sm:w-auto">
+                        <button
+                            onClick={toggleReorderCats}
+                            disabled={isSaving}
+                            className={`px-6 md:px-8 py-3 md:py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex border border-slate-200 items-center justify-center gap-2 md:gap-3 cursor-pointer ${isReorderingCats ? 'bg-amber-500 hover:bg-amber-600 text-white border-none' : 'bg-white hover:bg-slate-50 text-slate-900'}`}
+                        >
+                            {isReorderingCats ? (isSaving ? <FiRefreshCw className="animate-spin" /> : "Save Order") : "Reorder"}
+                        </button>
+                        {!isReorderingCats && (
+                            <button
+                                onClick={() => {
+                                    setEditingCategory(null);
+                                    setNewCategoryName("");
+                                    setNewCategoryPublished(true);
+                                    setIsCategoryModalOpen(true);
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 md:px-8 py-3 md:py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 md:gap-3 cursor-pointer"
+                            >
+                                <FiPlus size={20} /> Add Category
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
-                {categories.map((category, idx) => (
-                    <div
-                        key={category.categoryId}
-                        className="bg-white/90 backdrop-blur-md rounded-[1.5rem] md:rounded-[2.5rem] p-6 md:p-8 shadow-xl border border-white group hover:-translate-y-2 transition-all duration-500 animate-in slide-in-from-bottom-8"
-                        style={{ animationDelay: `${idx * 100}ms` }}
-                    >
-                        <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-start gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-indigo-950 text-white flex items-center justify-center font-black text-2xl shadow-lg shadow-indigo-100 group-hover:scale-110 transition-transform">
-                                {category.categoryName.charAt(0)}
-                            </div>
-                            {!category.isPublished && (
-                                <span className="bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Draft</span>
-                            )}
-                    </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => {
-                                        setEditingCategory(category);
-                                        setNewCategoryName(category.categoryName);
-                                        setNewCategoryPublished(category.isPublished !== false);
-                                        setIsCategoryModalOpen(true);
-                                    }}
-                                    className="p-3 bg-slate-50 text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndCategories}>
+                <SortableContext items={categories.map(c => c.categoryId)} strategy={rectSortingStrategy}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8 relative min-h-[200px]">
+                        {categories.map((category, idx) => (
+                            <SortableItemWrapper key={category.categoryId} id={category.categoryId} disabled={!isReorderingCats}>
+                                <div
+                                    className="h-full bg-white/90 backdrop-blur-md rounded-[1.5rem] md:rounded-[2.5rem] p-6 md:p-8 shadow-xl border border-white group hover:-translate-y-2 transition-all duration-500 animate-in slide-in-from-bottom-8"
+                                    style={!isReorderingCats ? { animationDelay: `${idx * 100}ms` } : {}}
                                 >
-                                    <FiEdit2 />
-                                </button>
-                                <button
-                                    onClick={() => handleDeleteCategory(category)}
-                                    className="p-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors cursor-pointer"
-                                >
-                                    <FiTrash2 />
-                                </button>
+                                    <div className="flex justify-between items-start mb-6">
+                                        <div className="flex items-start gap-4">
+                                            <div className="w-14 h-14 rounded-2xl bg-indigo-950 text-white flex items-center justify-center font-black text-2xl shadow-lg shadow-indigo-100 group-hover:scale-110 transition-transform">
+                                                {category.categoryName.charAt(0)}
+                                            </div>
+                                            {!category.isPublished && (
+                                                <span className="bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Draft</span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setEditingCategory(category);
+                                                    setNewCategoryName(category.categoryName);
+                                                    setNewCategoryPublished(category.isPublished !== false);
+                                                    setIsCategoryModalOpen(true);
+                                                }}
+                                                className="p-3 bg-slate-50 text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                                            >
+                                                <FiEdit2 />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteCategory(category)}
+                                                className="p-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors cursor-pointer"
+                                            >
+                                                <FiTrash2 />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <h3 className="text-2xl font-black text-slate-900 mb-2 truncate">{category.categoryName}</h3>
+                                    <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-8">
+                                        {category.dishCount || 0} {(category.dishCount || 0) === 1 ? 'Dish' : 'Dishes'}
+                                    </p>
+
+                                    <button
+                                        onClick={() => {
+                                            navigate(`/manage-menu/${outletUid}/category/${category.categoryId}`);
+                                            window.scrollTo(0, 0);
+                                        }}
+                                        disabled={isReorderingCats}
+                                        className="w-full mt-auto py-4 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-2xl font-black transition-all flex items-center justify-center gap-2 text-slate-900 cursor-pointer disabled:opacity-50"
+                                    >
+                                        Manage Dishes <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </div>
+                            </SortableItemWrapper>
+                        ))}
+                        
+                        {categories.length === 0 && (
+                            <div className="col-span-full py-20 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
+                                <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-6">
+                                    <FiPlus size={32} />
+                                </div>
+                                <h4 className="text-2xl font-black text-slate-900">{catSearch ? "No matching categories" : "No Categories Yet"}</h4>
+                                <p className="text-slate-500 mt-2 max-w-xs px-4">
+                                    {catSearch ? "Try a different search term." : "Start by creating your first category to organize your menu items."}
+                                </p>
                             </div>
-                        </div>
-
-                        <h3 className="text-2xl font-black text-slate-900 mb-2 truncate">{category.categoryName}</h3>
-                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-8">
-                            {category.dishCount || 0} {(category.dishCount || 0) === 1 ? 'Dish' : 'Dishes'}
-                        </p>
-
-                        <button
-                            onClick={() => {
-                                navigate(`/manage-menu/${outletUid}/category/${category.categoryId}`);
-                                window.scrollTo(0, 0);
-                            }}
-                            className="w-full py-4 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-2xl font-black transition-all flex items-center justify-center gap-2 text-slate-900 cursor-pointer"
-                        >
-                            Manage Dishes <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
-                        </button>
+                        )}
                     </div>
-                ))}
-
-                {categories.length === 0 && (
-                    <div className="col-span-full py-20 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
-                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-6">
-                            <FiPlus size={32} />
-                        </div>
-                        <h4 className="text-2xl font-black text-slate-900">{catSearch ? "No matching categories" : "No Categories Yet"}</h4>
-                        <p className="text-slate-500 mt-2 max-w-xs px-4">
-                            {catSearch ? "Try a different search term." : "Start by creating your first category to organize your menu items."}
-                        </p>
-                    </div>
-                )}
-            </div>
+                </SortableContext>
+            </DndContext>
 
             {/* Pagination Controls */}
             {totalCats > catLimit && (
@@ -680,16 +814,29 @@ export default function ManageMenu() {
                                 onSearch={handleDishSearch}
                              />
                         </div>
-                        <button
-                            onClick={() => handleAddManualDish(selectedCategoryId!)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer"
-                        >
-                            <FiPlus size={20} /> Add Dish
-                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={toggleReorderDishes}
+                                disabled={isSaving}
+                                className={`px-5 py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex border border-slate-200 items-center justify-center gap-2 cursor-pointer ${isReorderingDishes ? 'bg-amber-500 hover:bg-amber-600 text-white border-none' : 'bg-white hover:bg-slate-50 text-slate-900'}`}
+                            >
+                                {isReorderingDishes ? (isSaving ? <FiRefreshCw className="animate-spin" /> : "Save Order") : "Reorder"}
+                            </button>
+                            {!isReorderingDishes && (
+                                <button
+                                    onClick={() => handleAddManualDish(selectedCategoryId!)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer"
+                                >
+                                    <FiPlus size={20} /> Add Dish
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:gap-8 relative min-h-[400px]">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndDishes}>
+                    <SortableContext items={dishes.map(d => d.dishId)} strategy={verticalListSortingStrategy}>
+                        <div className="grid gap-4 md:gap-8 relative min-h-[400px]">
                     {dishesLoading && (
                         <div className="absolute inset-0 bg-slate-50/50 backdrop-blur-[2px] z-30 flex flex-col items-center justify-center rounded-[3rem] animate-in fade-in duration-300">
                              <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin shadow-2xl mb-4"></div>
@@ -698,10 +845,10 @@ export default function ManageMenu() {
                     )}
                     
                     {dishes.map((dish, dishIdx) => (
+                        <SortableItemWrapper key={dish.dishId} id={dish.dishId} disabled={!isReorderingDishes}>
                         <div
-                            key={dish.dishId}
                             className={`flex flex-col lg:flex-row gap-6 md:gap-8 p-5 md:p-8 bg-white/90 backdrop-blur-md rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl border transition-all duration-500 group animate-in fade-in slide-in-from-bottom-4 ${isDishDirty(dish) ? 'border-indigo-200 ring-2 ring-indigo-50 shadow-indigo-100' : 'border-white'}`}
-                            style={{ animationDelay: `${dishIdx * 50}ms` }}
+                            style={!isReorderingDishes ? { animationDelay: `${dishIdx * 50}ms` } : {}}
                         >
                             {/* Image Section */}
                             <div className="w-full lg:w-[40%] flex flex-col gap-4">
@@ -1041,6 +1188,7 @@ export default function ManageMenu() {
                                 </div>
                             </div>
                         </div>
+                        </SortableItemWrapper>
                     ))}
 
                     {!dishesLoading && dishes.length === 0 && (
@@ -1052,7 +1200,9 @@ export default function ManageMenu() {
                             </p>
                         </div>
                     )}
-                </div>
+                        </div>
+                    </SortableContext>
+                </DndContext>
 
                 {/* Pagination for Dishes */}
                 {totalDishes > dishLimit && (

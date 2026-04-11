@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Form, UploadFile, File, HTTPException, status, Query
 from typing import List, Optional
+from pydantic import BaseModel
 from app.database import businesses_collection, outlet_profiles_collection, scans_collection, admin_config_collection, business_config_collection
 from app.services.cloudinary_service import upload_image
 from app.models import OutletDB, OutletUpdate, AdminConfigDB
 import uuid
 from datetime import datetime
 import shutil
+
+class ReorderItem(BaseModel):
+    id: str
+    order: int
 
 router = APIRouter(tags=["Outlets"])
 
@@ -176,10 +181,10 @@ async def get_outlet_menu(outlet_uid: str):
 
     # Get Categories
     from app.database import categories_collection, dishes_collection
-    categories = await categories_collection.find({"storeUid": outlet_uid, "isPublished": True}, {"_id": 0}).to_list(length=100)
+    categories = await categories_collection.find({"storeUid": outlet_uid, "isPublished": True}, {"_id": 0}).sort("order", 1).to_list(length=100)
 
     # Get Dishes
-    dishes = await dishes_collection.find({"storeUid": outlet_uid, "isPublished": True}, {"_id": 0}).to_list(length=1000)
+    dishes = await dishes_collection.find({"storeUid": outlet_uid, "isPublished": True}, {"_id": 0}).sort("order", 1).to_list(length=1000)
 
     # Group dishes by category
     menu_data = []
@@ -217,7 +222,7 @@ async def get_outlet_categories(
     outlet_uid: str,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1)
+    limit: int = Query(10, ge=-1)
 ):
     from app.database import categories_collection, dishes_collection
     
@@ -228,7 +233,12 @@ async def get_outlet_categories(
     total = await categories_collection.count_documents(query)
     skip = (page-1) * limit
     
-    cursor = categories_collection.find(query, {"_id": 0}).sort("createdAt", -1).skip(skip).limit(limit)
+    # Check if we want all categories (unpaginated for reorder view)
+    if limit == -1:
+        cursor = categories_collection.find(query, {"_id": 0}).sort([("order", 1), ("createdAt", -1)])
+    else:
+        cursor = categories_collection.find(query, {"_id": 0}).sort([("order", 1), ("createdAt", -1)]).skip(skip).limit(limit)
+        
     categories = []
     async for cat in cursor:
         dish_count = await dishes_collection.count_documents({"categoryId": cat["categoryId"], "isDeleted": {"$ne": True}})
@@ -269,7 +279,7 @@ async def get_outlet_dishes(
     categoryId: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1)
+    limit: int = Query(10, ge=-1)
 ):
     from app.database import dishes_collection
     import logging
@@ -288,8 +298,12 @@ async def get_outlet_dishes(
     
     logger.info(f"QUERY EXEC: total={total}, skip={skip}, limit={limit}")
     
-    cursor = dishes_collection.find(query, {"_id": 0}).sort("createdAt", -1).skip(skip).limit(limit)
-    dishes = await cursor.to_list(length=limit)
+    if limit == -1:
+        cursor = dishes_collection.find(query, {"_id": 0}).sort([("order", 1), ("createdAt", -1)])
+        dishes = await cursor.to_list(length=None)
+    else:
+        cursor = dishes_collection.find(query, {"_id": 0}).sort([("order", 1), ("createdAt", -1)]).skip(skip).limit(limit)
+        dishes = await cursor.to_list(length=limit)
     
     logger.info(f"RESULTS: count={len(dishes)}")
     
@@ -401,3 +415,27 @@ async def get_business_stats(business_id: str):
         "dishes": total_dishes,
         "totalScans": total_scans
     }
+
+@router.put("/outlets/{outlet_uid}/categories/reorder")
+async def reorder_categories(outlet_uid: str, items: List[ReorderItem]):
+    from app.database import categories_collection
+    from pymongo import UpdateOne
+    
+    requests = []
+    for item in items:
+        requests.append(UpdateOne({"categoryId": item.id, "storeUid": outlet_uid}, {"$set": {"order": item.order}}))
+    if requests:
+        await categories_collection.bulk_write(requests)
+    return {"status": "success"}
+
+@router.put("/outlets/{outlet_uid}/dishes/reorder")
+async def reorder_dishes(outlet_uid: str, items: List[ReorderItem]):
+    from app.database import dishes_collection
+    from pymongo import UpdateOne
+    
+    requests = []
+    for item in items:
+        requests.append(UpdateOne({"dishId": item.id, "storeUid": outlet_uid}, {"$set": {"order": item.order}}))
+    if requests:
+        await dishes_collection.bulk_write(requests)
+    return {"status": "success"}

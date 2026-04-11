@@ -42,6 +42,17 @@ const mapOptions = {
 
 // MapUpdater removed as GoogleMap handles center updates reactively
 
+interface Variant {
+    variantType?: string | null;
+    label: string;
+    price: number;
+}
+
+interface Addon {
+    name: string;
+    price: number;
+}
+
 interface Dish {
     dishId: string;
     name: string;
@@ -49,6 +60,8 @@ interface Dish {
     weight: string | null;
     description: string | null;
     imageUrl: string | null;
+    variants?: Variant[];
+    addons?: Addon[];
 }
 
 interface Category {
@@ -78,6 +91,7 @@ export default function PublicMenu() {
     const [menu, setMenu] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [theme] = useState<"light" | "dark">("light");
+    const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
 
     const [searchParams] = useSearchParams();
     const source = searchParams.get("source");
@@ -229,11 +243,15 @@ export default function PublicMenu() {
                                                     {dish.name}
                                                 </h3>
 
-                                                {dish.price !== null && (
+                                                {dish.variants && dish.variants.length > 0 ? (
+                                                    <span className="text-lg font-bold text-blue-600">
+                                                        {dish.variants.length === 1 ? `₹${dish.variants[0].price}` : `₹${Math.min(...dish.variants.map(v => v.price))}`}
+                                                    </span>
+                                                ) : dish.price !== null ? (
                                                     <span className="text-lg font-bold text-blue-600">
                                                         ₹{dish.price}
                                                     </span>
-                                                )}
+                                                ) : null}
                                             </div>
 
                                             {dish.description && (
@@ -245,12 +263,23 @@ export default function PublicMenu() {
                                         </div>
 
                                         {dish.weight && (
-                                            <span className={`mt-4 text-xs px-3 py-1 rounded-full w-fit ${isDark
+                                            <span className={`mt-4 text-xs px-3 py-1 rounded-full w-fit inline-block ${isDark
                                                 ? "bg-gray-800 text-gray-300"
                                                 : "bg-gray-100 text-gray-600"
                                                 }`}>
                                                 {dish.weight}
                                             </span>
+                                        )}
+                                        
+                                        {((dish.variants && dish.variants.length > 0) || (dish.addons && dish.addons.length > 0)) && (
+                                            <div className="mt-4 flex justify-end">
+                                                <button 
+                                                    onClick={() => setSelectedDish(dish)}
+                                                    className="px-5 py-2 text-sm font-bold rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 hover:scale-105 active:scale-95 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 shadow-sm transition-all"
+                                                >
+                                                    View
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -337,6 +366,93 @@ export default function PublicMenu() {
                 }`}>
                 © {new Date().getFullYear()} {outlet.storeName}. All rights reserved.
             </footer>
+
+            {/* Variant Modal */}
+            {selectedDish && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity" 
+                    onClick={() => setSelectedDish(null)}
+                >
+                    <div 
+                        className={`w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden transform transition-all ${isDark ? "bg-gray-900 border border-gray-800" : "bg-white"}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {selectedDish.imageUrl && (
+                            <div className="w-full h-48 relative">
+                                <img 
+                                    src={selectedDish.imageUrl} 
+                                    alt={selectedDish.name} 
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                <h3 className="absolute bottom-4 left-6 text-2xl font-bold text-white drop-shadow-md">
+                                    {selectedDish.name}
+                                </h3>
+                            </div>
+                        )}
+                        <div className={`p-6 flex justify-between items-center border-b ${isDark ? "border-gray-800" : "border-gray-100"} ${!selectedDish.imageUrl ? "pt-6" : "pt-4"}`}>
+                            {!selectedDish.imageUrl && (
+                                <h3 className="text-xl font-bold">
+                                    {selectedDish.name}
+                                </h3>
+                            )}
+                            <button 
+                                onClick={() => setSelectedDish(null)}
+                                className={`p-2 rounded-full transition-colors ml-auto ${isDark ? "bg-gray-800 hover:bg-gray-700 text-gray-400" : "bg-gray-100 hover:bg-gray-200 text-gray-600"}`}
+                                aria-label="Close"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-6 max-h-[50vh] overflow-y-auto space-y-3">
+                            {selectedDish.variants && selectedDish.variants.length > 0 && (
+                                <>
+                                    <h4 className={`text-sm font-black uppercase tracking-widest mb-4 mt-2 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Select Variant</h4>
+                                    {selectedDish.variants.map((variant, idx) => (
+                                        <div 
+                                            key={`variant-${idx}`}
+                                            className={`flex justify-between items-center p-4 rounded-2xl border transition-all hover:shadow-md ${isDark ? "border-gray-800 bg-gray-800/50 hover:border-gray-600" : "border-gray-100 bg-white hover:border-blue-200 shadow-sm"}`}
+                                        >
+                                            <div>
+                                                {variant.variantType && (
+                                                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isDark ? "text-blue-400" : "text-blue-600"}`}>
+                                                        {variant.variantType}
+                                                    </p>
+                                                )}
+                                                <p className={`font-bold ${isDark ? "text-gray-200" : "text-gray-800"}`}>{variant.label}</p>
+                                            </div>
+                                            <p className="font-extrabold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg">₹{variant.price}</p>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
+                            
+                            {selectedDish.addons && selectedDish.addons.length > 0 && (
+                                <>
+                                    <h4 className={`text-sm font-black uppercase tracking-widest mb-4 mt-6 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Add-ons</h4>
+                                    {selectedDish.addons.map((addon, idx) => (
+                                        <div 
+                                            key={`addon-${idx}`}
+                                            className={`flex justify-between items-center p-4 rounded-2xl border transition-all hover:shadow-md ${isDark ? "border-gray-800 bg-gray-800/50 hover:border-gray-600" : "border-gray-100 bg-white hover:border-violet-200 shadow-sm"}`}
+                                        >
+                                            <p className={`font-bold ${isDark ? "text-gray-200" : "text-gray-800"}`}>{addon.name}</p>
+                                            <p className="font-extrabold text-violet-600 bg-violet-50 dark:bg-violet-900/30 px-3 py-1.5 rounded-lg">₹{addon.price}</p>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
+
+                            {(!selectedDish.variants || selectedDish.variants.length === 0) && (!selectedDish.addons || selectedDish.addons.length === 0) && (
+                                <div className="text-center py-6 text-gray-500">
+                                    No variants or add-ons available.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
