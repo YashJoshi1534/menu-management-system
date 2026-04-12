@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 interface BreadcrumbItem {
   label: string;
   path?: string;
+  onClick?: () => void;
 }
 
 interface BreadcrumbProps {
@@ -18,7 +19,7 @@ export default function Breadcrumb({ items }: BreadcrumbProps) {
       <div className="flex items-center bg-white/80 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/60 shadow-lg shadow-gray-200/40 select-none">
         <button
           onClick={() => navigate("/dashboard")}
-          className="flex items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors font-bold text-sm"
+          className="flex items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors font-bold text-sm cursor-pointer"
         >
           <FiHome size={14} className="mb-0.5" />
           Dashboard
@@ -27,15 +28,18 @@ export default function Breadcrumb({ items }: BreadcrumbProps) {
         {items.map((item, index) => (
           <div key={index} className="flex items-center">
             <span className="mx-3 text-slate-300 font-medium">/</span>
-            {item.path ? (
+            {item.path || item.onClick ? (
               <button
-                onClick={() => navigate(item.path!)}
-                className="text-slate-400 hover:text-blue-600 transition-colors font-bold text-sm"
+                onClick={() => {
+                  if (item.onClick) item.onClick();
+                  else if (item.path) navigate(item.path);
+                }}
+                className="text-slate-400 hover:text-blue-600 transition-colors font-bold text-sm cursor-pointer whitespace-nowrap"
               >
                 {item.label}
               </button>
             ) : (
-              <span className="text-slate-900 font-bold text-sm tracking-tight">
+              <span className="text-slate-900 font-bold text-sm tracking-tight whitespace-nowrap">
                 {item.label}
               </span>
             )}

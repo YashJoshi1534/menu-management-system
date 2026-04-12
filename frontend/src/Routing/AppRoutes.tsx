@@ -53,6 +53,7 @@ export default function AppRoutes() {
                 <Route path="/completion" element={<ProtectedRoute><Completion /></ProtectedRoute>} />
                 <Route path="/manage-menu" element={<ProtectedRoute><ViewOutlets /></ProtectedRoute>} />
                 <Route path="/manage-menu/:outletUid" element={<ProtectedRoute><ManageMenu /></ProtectedRoute>} />
+                <Route path="/manage-menu/:outletUid/categories" element={<ProtectedRoute><ManageMenu /></ProtectedRoute>} />
                 <Route path="/manage-menu/:outletUid/category/:categoryId" element={<ProtectedRoute><ManageMenu /></ProtectedRoute>} />
                 <Route path="/configure-outlets" element={<ProtectedRoute><ConfigureOutlets /></ProtectedRoute>} />
 

@@ -51,16 +51,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const logout = () => {
-        setBusiness(null);
-        setSelectedOutletUid(null);
-        removeCookie("business");
-        removeCookie("outletUid");
-        removeCookie("accessToken");
-        removeCookie("refreshToken");
-        // Clear all local storage session data
-        localStorage.clear();
-        // Redirect to login
-        window.location.href = "/";
+        try {
+            // First clear all state to trigger UI updates
+            setBusiness(null);
+            setSelectedOutletUid(null);
+            
+            // Remove all authentication cookies
+            const cookiesToRemove = ["business", "outletUid", "accessToken", "refreshToken"];
+            cookiesToRemove.forEach(name => removeCookie(name));
+            
+            // Clear all local storage session data
+            localStorage.clear();
+            
+            // Direct hard redirect to login/landing
+            window.location.replace("/");
+        } catch (error) {
+            console.error("Logout error:", error);
+            // Fallback redirect if something crashes
+            window.location.href = "/";
+        }
     };
 
 
